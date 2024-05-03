@@ -31,7 +31,13 @@ class Title {
 }
 Player o-- "*" Title
 
-class Board
+class Board {
+    tiles: list[Tile|None]
+    get_available_tiles() Tile[1..3]
+    take_tile(index: int)
+    fill_tiles()
+}
+Game *-- Board
 
 class Objective {
     red: int
