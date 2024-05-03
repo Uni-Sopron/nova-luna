@@ -26,7 +26,7 @@ Game o-- "4" Player
 class Title {
     color: str
     isTaken: bool
-    objectives: Objective[3]
+    objectives: Objective[0..3]
     number() int
 }
 Player o-- "*" Title
