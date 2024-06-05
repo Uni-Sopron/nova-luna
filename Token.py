@@ -1,10 +1,11 @@
 class Token:
     # A token class célja hogy indikátor legyen a kártyákon, mivel több színű lehet keverve 4 adatot tartalmaz: red, green, blue, yellow
-    def __init__(self, red=None, green=None, blue=None, yellow=None):
+    def __init__(self, red=None, green=None, blue=None, yellow=None, is_completed=False):
         self.red = red
         self.green = green
         self.blue = blue
         self.yellow = yellow
+        self.is_completed = is_completed  # Teljesült-e a token küldetés
 
 def get_token_with_colors(red_count=0, green_count=0, blue_count=0, yellow_count=0):
     token_dict = {
@@ -77,8 +78,3 @@ def generate_token_combinations():
     sorted_combinations = [Token(**dict(comb)) for comb in sorted(list(combinations), key=lambda x: (len([color for color in dict(x).values() if color is not None]), sum(color for color in dict(x).values() if color is not None)))]
     
     return sorted_combinations
-
-
-
-
-
