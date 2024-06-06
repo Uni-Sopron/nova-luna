@@ -6,41 +6,21 @@ from Token import Token
 from card_generator import generate_cards, CARD_DATA
 
 class Game:
-    def __init__(self):
-        self.players = []  # Játékosok listája
-        self.deck = []  # Az összes kártyát tartalmazza
+    def __init__(self, num_players):
+        # create players
+        colors = ['white', 'red', 'blue', 'yellow']
+        self.players = [Player(colors[i], f'Player{i+1}') for i in range(num_players)]  # Játékosok listája
+        self.deck = generate_cards()  # Az összes kártyát tartalmazza
         self.current_player_index = 0  # Nyomon követi hogy ki a következő
-        self.board = []  # A játék tábla ahol a játékosok mozognak
-        self.card_board = []  # A játék tábla ahol a kártyák vannak
-        self.player_positions = {}  # Játékosok pozíciói a táblán
+        self.board = [[] for _ in range(24)]  # A játék tábla ahol a játékosok mozognak
+        for player in self.players:
+            self.board[0].append(player)  # Minden játékos elhelyezése a kezdő pozíción
+        self.card_board = [None] * 12  # A játék tábla ahol a kártyák vannak
+        self.player_positions = {p.name : 0 for p in self.players}  # Játékosok pozíciói a táblán
         self.moon_marker = "moon_marker" # Ezzel jelöljük a holdat
         self.moon_marker_position = 0
-        
-    def init_game(self, num_players):
-        # Létrehozza a játékhoz szükséges elemeket
-        self.create_players(num_players)
-        generate_cards()
-        self.set_board()
+        self.card_board[0] = self.moon_marker
         self.deal()
-        self.initialize_positions()
-        
-    def create_players(self, num_players):
-        # Játékosok létrehozása
-        colors = ['white', 'red', 'blue', 'yellow']
-        for i in range(num_players):
-            player_name = f'Player{i+1}'
-            player = Player(colors[i], Inventory, player_name)
-            self.players.append(player)
-
-    def set_board(self):
-        # Logika a játékosmező létrehozására
-        self.board = [[] for _ in range(24)]
-
-    def initialize_positions(self):
-        # Inicializálja a játékosok pozícióit a táblán
-        for player in self.players:
-            self.player_positions[player.name] = 0
-            self.board[0].append(player)  # Minden játékos elhelyezése a kezdő pozíción
 
     def next_round(self):
         # Megállapítja a következő játékost a pozíciók alapján
@@ -108,5 +88,4 @@ class Game:
 
 if __name__ == "__main__":
     num_players = 2  # Ahány játékossal szeretnénk játszani, max 4 min 1. Most 2
-    game = Game()
-    game.init_game(num_players)
+    game = Game(num_players)
