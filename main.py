@@ -7,67 +7,95 @@ from card_generator import generate_cards, CARD_DATA
 
 class Game:
     def __init__(self, num_players):
-        # Létrehozzuk a játékosokat
+        # Játékosok színei
         colors = ['white', 'red', 'blue', 'yellow']
-        self.players = [Player(colors[i], f'Player{i+1}') for i in range(num_players)]  # Játékosok listája
-        self.deck = generate_cards(CARD_DATA)  # Az összes kártyát tartalmazza
-        self.current_player_index = 0  # Nyomon követi hogy ki az aktív játékos
-        self.board = [[] for _ in range(24)]  # A játék tábla ahol a játékosok mozognak
+        # Játékosok létrehozása
+        self.players = [Player(colors[i], f'Player{i+1}') for i in range(num_players)]
+        # Pakli generálása
+        self.deck = generate_cards(CARD_DATA)
+        # Első játékos indexének inicializálása
+        self.current_player_index = 0
+        # Játék tábla létrehozása
+        self.board = [[] for _ in range(24)]
+        # Játékosok elhelyezése a kezdő pozícióba
         for player in self.players:
-            self.board[0].append(player)  # Minden játékos elhelyezése a kezdő pozíción
-        self.card_board = [None] * 12  # A játék tábla ahol a kártyák vannak
-        self.player_positions = {p.name : 0 for p in self.players}  # Játékosok pozíciói a táblán
-        self.moon_marker = "moon_marker" # Ezzel jelöljük a holdat
+            self.board[0].append(player)
+        # Kártya tábla inicializálása
+        self.card_board = [None] * 12
+        # Játékos pozíciók nyomon követése
+        self.player_positions = {p.name: 0 for p in self.players}
+        # Holdjelző beállítása
+        self.moon_marker = "moon_marker"
         self.moon_marker_position = 0
         self.card_board[0] = self.moon_marker
-        self.last_positions = [] # Nézi milyen sorrendben léptek a játékosok
+        # Utolsó pozíciók nyomon követése (Ez a round orderhez kell)
+        self.last_positions = []
+        # Játékos sorrend inicializálása (Mivel mindenki ugyanott kezd)
+        self.turn_order = [p.name for p in self.players]
         self.deal()
 
     def next_round(self):
-        # Megnézni ki a leghátsó játékos hogy tudjuk ki lép következő körben
+        # Következő kör meghatározása (Ki lesz a következő)
         if self.is_game_over():
             self.end_game()
             return
-        furthest_back_player = self.find_furthest_back_player()
-        self.current_player_index = self.players.index(furthest_back_player)
+        current_player = self.players[self.current_player_index]
+        # Ki lépett legkevesebbet (Logikusan ő lesz leghátul)
+        least_movement = min(p.total_movement for p in self.players)
+        candidates = [p for p in self.players if p.total_movement == least_movement]
+        if len(candidates) == 1:
+            next_player = candidates[0]
+        else:
+            for player_name in reversed(self.turn_order):
+                if player_name in [p.name for p in candidates]:
+                    next_player = next(p for p in self.players if p.name == player_name)
+                    break
+        self.current_player_index = self.players.index(next_player)
 
     def move_player(self, player, card):
+        # Játékos mozgatása
         if self.is_game_over():
             self.end_game()
             return
         movement = card.movement
         current_position = self.player_positions[player.name]
         new_position = (current_position + movement) % len(self.board)
-        
-        self.board[current_position].remove(player) # Játékos eltávolíttása a jelenlegi helyzetéről
-        self.board[new_position].append(player) # Játékos hozzáadása az új helyhez
-        self.player_positions[player.name] = new_position # Játékos pozíciók frissítése
-        self.last_positions.append((player.name, new_position)) 
+
+        self.board[current_position].remove(player)
+        self.board[new_position].append(player)
+        self.player_positions[player.name] = new_position
+        player.add_movement(movement)
+        self.last_positions.append((player.name, new_position))
+        self.check_end_game()
 
     def check_end_game(self):
+        # Game Over kondiciók ellenőrzése
         if self.is_game_over():
             self.end_game()
 
     def is_game_over(self):
-        # Logika megnézni hogy a játék véget ért-e a 2 lehetséges kondíció közül
+        # Game Over teljesülésének ellenőrzése
         if any(player.score >= 10 for player in self.players):
             return True
-        if all(card is None for card in self.card_board) and not self.deck:
+        if all(card is None or card == self.moon_marker for card in self.card_board):
             return True
         return False
-            
+
     def end_game(self):
+        # Game Over
         print("Game Over.")
         scores = sorted([(player.name, player.score) for player in self.players], key=lambda x: x[1], reverse=True)
         self.show_end_game_window(scores)
 
     def deal(self):
-        # card_board feltöltése kártyákkal a paklibol
+        # Kártyák osztása a kártya táblára
         for i in range(len(self.card_board)):
             if self.card_board[i] is None and self.deck:
                 self.card_board[i] = self.deck.pop()
+        self.check_end_game()
 
     def draw(self, player, card_position):
+        # Kártyahúzás
         available_positions = self.get_available_card_positions()
         if card_position < 0 or card_position >= len(self.card_board):
             raise IndexError("Position out of bounds")
@@ -75,13 +103,14 @@ class Game:
             raise ValueError("Invalid position")
 
         card = self.card_board[card_position]
-        player.Inventory.add_card(card, random.randint(-5, 5), random.randint(-5, 5)) # Ez random ameddig gui lesz haználható
-        self.card_board[card_position] = None  # Kártya eltávolíttása a card board ról
+        player.inventory.add_card(card, random.randint(-5, 5), random.randint(-5, 5))
+        self.card_board[card_position] = None
         self.move_player(player, card)
-        self.moon_marker_position = card_position  # A hold mozgatása a felvett kártya helyére
+        self.moon_marker_position = card_position
+        self.check_end_game()
 
     def get_available_card_positions(self):
-        # Megnézzük a húzható
+        # Lehetséges (engedélyezett) kártyapozíciók meghatározása
         positions = []
         current_position = self.moon_marker_position
         cards_found = 0
@@ -93,11 +122,12 @@ class Game:
                 positions.append(current_position)
                 cards_found += 1
             if current_position == start_position:
-                break  # Megáll ha vissza érünk a holdhoz és nem talált 3 kártyát
+                break
 
         return positions
-    
+
     def find_furthest_back_player(self):
+        # Utolsó játékos meghatározása
         furthest_back_position = min(self.player_positions.values())
         candidates = [player for player in self.players if self.player_positions[player.name] == furthest_back_position]
         if len(candidates) == 1:
@@ -107,8 +137,13 @@ class Game:
                 for candidate in candidates:
                     if candidate.name == player_name:
                         return candidate
+        return self.players[0]
+
+    def show_end_game_window(self, scores):
+        # Eredmények megjelenítése
+        for name, score in scores:
+            print(f"{name}: {score}")
 
 if __name__ == "__main__":
-    # Mivel GUI-t futtatjuk ez nem fut le
-    num_players = 4  # Ahány játékossal szeretnénk játszani, max 4 min 1. Most 2
+    num_players = 4
     game = Game(num_players)
