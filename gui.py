@@ -1,12 +1,9 @@
-# gui.py
-
 import tkinter as tk
 from tkinter import ttk
 from main import Game
 
 class NovaLunaGUI:
     def __init__(self, root):
-        # GUI inicializálása
         self.root = root
         self.root.title("Nova Luna")
         self.game = Game(4)
@@ -18,9 +15,9 @@ class NovaLunaGUI:
         self.update_board()
         self.update_info()
         self.game.turn_order.append(self.game.players[0].name)
+        self.game.set_gui(self)  # Bind the GUI to the game
 
     def create_widgets(self):
-        # GUI elemek létrehozása
         self.canvas = tk.Canvas(self.root, width=1200, height=800)
         self.canvas.pack()
 
@@ -36,15 +33,22 @@ class NovaLunaGUI:
         self.inventory_button = tk.Button(self.root, text="Inventory", command=self.open_inventory_window)
         self.inventory_button.pack(pady=10)
 
+        self.player2_inventory_button = tk.Button(self.root, text="Player2 Inventory", command=lambda: self.open_inventory_window(1))
+        self.player2_inventory_button.pack(pady=10, side=tk.LEFT)
+
+        self.player3_inventory_button = tk.Button(self.root, text="Player3 Inventory", command=lambda: self.open_inventory_window(2))
+        self.player3_inventory_button.pack(pady=10, side=tk.LEFT)
+
+        self.player4_inventory_button = tk.Button(self.root, text="Player4 Inventory", command=lambda: self.open_inventory_window(3))
+        self.player4_inventory_button.pack(pady=10, side=tk.LEFT)
+
     def update_board(self):
-        # Játék tábla frissítése
         self.canvas.delete("all")
         self.draw_player_board()
         self.draw_card_board()
         self.canvas.update()
 
     def draw_player_board(self):
-        # Játékos tábla megjelenítése
         size = 60
         margin = 5
         for i in range(len(self.game.board)):
@@ -62,7 +66,6 @@ class NovaLunaGUI:
                 self.canvas.create_text(x0 + pos_x + 10, y0 + pos_y + 10, text=player.name[-1], fill=text_color)
 
     def get_player_positions(self, num_players):
-        # Játékos pozíciók meghatározása (Ezt dinamikus megjelenítéshez használjuk)
         positions = {
             1: [(20, 20)],
             2: [(5, 5), (35, 35)],
@@ -72,7 +75,6 @@ class NovaLunaGUI:
         return positions.get(num_players, [])
 
     def draw_card_board(self):
-        # Kártya tábla megjelenítése
         size = 80
         margin = 5
         for i in range(len(self.game.card_board)):
@@ -102,7 +104,6 @@ class NovaLunaGUI:
                 self.canvas.tag_bind(self.canvas.create_rectangle(x0, y0, x1, y1, outline=''), '<Button-1>', lambda event, i=i: self.on_card_click(i))
 
     def draw_token(self, canvas, x, y, token):
-        # Tokenek megjelenítése
         colors = []
         if token.red:
             colors.extend(['red'] * token.red)
@@ -118,7 +119,6 @@ class NovaLunaGUI:
             canvas.create_oval(x + col * 10, y + row * 10, x + 10 + col * 10, y + 10 + row * 10, fill=color)
 
     def on_card_click(self, card_position):
-        # Kártya felhúzásának kezelése
         if self.selected_card is None:
             self.available_positions = self.get_available_card_positions()
 
@@ -141,8 +141,7 @@ class NovaLunaGUI:
         else:
             print("Invalid card selection. Please select a card within the first three positions from the moon marker.")
 
-    def open_inventory_window(self):
-        # Inventory ablak megnyitása
+    def open_inventory_window(self, player_index=None):
         if self.inventory_window and self.inventory_window.winfo_exists():
             return
 
@@ -166,25 +165,29 @@ class NovaLunaGUI:
         inventory_inner_frame = ttk.Frame(inventory_canvas)
         inventory_canvas.create_window((0, 0), window=inventory_inner_frame, anchor='nw')
 
-        self.draw_inventory(inventory_inner_frame, inventory_canvas)
+        self.draw_inventory(inventory_inner_frame, inventory_canvas, player_index)
         self.center_inventory_view(inventory_canvas)
 
     def center_inventory_view(self, inventory_canvas):
-        # Inventory ablak igazíttása
         self.root.update_idletasks()
-        canvas_width = inventory_canvas.winfo_width()
-        canvas_height = inventory_canvas.winfo_height()
+        bbox = inventory_canvas.bbox("all")
+        if bbox is not None:
+            canvas_width = inventory_canvas.winfo_width()
+            canvas_height = inventory_canvas.winfo_height()
 
-        center_x = self.game.players[self.game.current_player_index].inventory.center_x * 65 - canvas_width // 2
-        center_y = self.game.players[self.game.current_player_index].inventory.center_y * 65 - canvas_height // 2
+            center_x = self.game.players[self.game.current_player_index].inventory.center_x * 65 - canvas_width // 2
+            center_y = self.game.players[self.game.current_player_index].inventory.center_y * 65 - canvas_height // 2
 
-        inventory_canvas.xview_moveto(center_x / inventory_canvas.bbox("all")[2])
-        inventory_canvas.yview_moveto(center_y / inventory_canvas.bbox("all")[3])
+            inventory_canvas.xview_moveto(center_x / bbox[2])
+            inventory_canvas.yview_moveto(center_y / bbox[3])
 
-    def draw_inventory(self, inventory_frame, inventory_canvas):
-        # Inventory megjelenítése
+    def draw_inventory(self, inventory_frame, inventory_canvas, player_index=None):
         inventory_canvas.delete("all")
-        current_player = self.game.players[self.game.current_player_index]
+        if player_index is None:
+            current_player = self.game.players[self.game.current_player_index]
+        else:
+            current_player = self.game.players[player_index]
+        
         size = 60
         margin = 5
 
@@ -223,7 +226,6 @@ class NovaLunaGUI:
                     inventory_canvas.tag_bind(inventory_canvas.create_rectangle(x0, y0, x1, y1, outline=''), '<Button-1>', lambda event, i=(x, y): self.on_inventory_click(i, inventory_canvas))
 
     def on_inventory_click(self, grid_position, inventory_canvas):
-        # Inventory klikkelés lekezelése
         if self.selected_card is None:
             print("Select a card first")
             return
@@ -259,19 +261,20 @@ class NovaLunaGUI:
             print("Invalid placement. Please place the card adjacent to an existing card.")
 
     def update_inventory(self):
-        # Inventory frissítése
         if self.inventory_window and self.inventory_window.winfo_exists():
             inventory_canvas = self.inventory_window.winfo_children()[0].winfo_children()[0]
             self.draw_inventory(inventory_canvas, inventory_canvas)
 
     def update_inventory_display(self):
-        # Inventory ablak frissítése
         if self.inventory_window and self.inventory_window.winfo_exists():
             inventory_canvas = self.inventory_window.winfo_children()[0].winfo_children()[0]
             self.draw_inventory(inventory_canvas, inventory_canvas)
 
+    def update_inventory_display_for_all(self):
+        for i in range(len(self.game.players)):
+            self.open_inventory_window(i)
+
     def is_valid_placement(self, player, x, y):
-        # Lehetséges (engedélyezett) kártya helyének ellenőrzése
         adjacent_positions = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for ax, ay in adjacent_positions:
             if player.inventory.get_card(ax, ay) is not None:
@@ -281,12 +284,10 @@ class NovaLunaGUI:
         return False
 
     def is_first_card(self):
-        # Megnézi hogy ez-e az első kártyája a játékosnak
         current_player = self.game.players[self.game.current_player_index]
         return len(current_player.inventory.get_all_cards()) == 0
 
     def auto_place_first_card(self):
-        # Első kártya automatikus lehelyezése
         current_player = self.game.players[self.game.current_player_index]
         if len(current_player.inventory.get_all_cards()) == 0:
             center_x = current_player.inventory.center_x
@@ -313,7 +314,6 @@ class NovaLunaGUI:
                 self.show_end_game_window()
 
     def get_available_card_positions(self):
-        # Lehetséges (engedélyezett) kártyapozíciók meghatározása a kártya paklin felhúzásra
         current_position = self.game.moon_marker_position
         positions = []
         count = 0
@@ -331,7 +331,6 @@ class NovaLunaGUI:
         return positions
 
     def update_info(self):
-        # Információ gui frissítése
         current_player = self.game.players[self.game.current_player_index]
         self.player_turn_label.config(text=f"{current_player.name}'s turn")
         score_text = "Score:\n"
@@ -340,14 +339,13 @@ class NovaLunaGUI:
         self.score_label.config(text=score_text)
 
     def check_inventory(self, player):
-        # Token küldetések leelenörzése
         for card, x, y in player.inventory.get_all_cards():
             for token in card.tokens:
                 if not token.is_completed:
                     self.check_token_completion(player, card, token, x, y)
 
     def check_token_completion(self, player, card, token, x, y):
-        # Token küldetés teljesítésének ellenőrzése
+        print(f"GUI Checking token completion for {player.name}: {token.__dict__}")
         directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
         def count_color_chain(nx, ny, color, visited):
@@ -374,14 +372,14 @@ class NovaLunaGUI:
 
         for color, required_count in token.__dict__.items():
             if required_count and counts.get(color, 0) < required_count:
+                print(f"GUI Token not completed for {player.name}: needed {required_count} {color}, found {counts[color]}")
                 return
 
         token.is_completed = True
         player.score += 1
-        print(f"{player.name} completed a token! New score: {player.score}")
+        print(f"GUI {player.name} completed a token! New score: {player.score}")
 
     def refill_card_board_if_needed(self):
-        # Kártya tábla újraosztása, ha teljesül a kondíció
         cards_on_board = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
         if cards_on_board < 3 and self.game.deck:
             for i in range(len(self.game.card_board)):
@@ -391,7 +389,6 @@ class NovaLunaGUI:
         self.game.check_end_game()
 
     def show_end_game_window(self):
-        # Game Over ablak megjelenítése
         if self.inventory_window:
             self.inventory_window.destroy()
         self.root.destroy()
@@ -413,14 +410,12 @@ class NovaLunaGUI:
         end_game_window.mainloop()
 
     def start_new_game(self, window):
-        # New Game lekezelése
         window.destroy()
         root = tk.Tk()
         app = NovaLunaGUI(root)
         app.run()
 
     def run(self):
-        # GUI futtatása
         self.root.mainloop()
 
 if __name__ == "__main__":

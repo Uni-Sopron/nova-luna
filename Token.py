@@ -1,3 +1,5 @@
+# Token.py
+
 class Token:
     # A token class célja hogy indikátor legyen a kártyákon, mivel több színű lehet keverve 4 adatot tartalmaz: red, green, blue, yellow
     def __init__(self, red=None, green=None, blue=None, yellow=None, is_completed=False):

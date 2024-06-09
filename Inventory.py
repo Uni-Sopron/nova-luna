@@ -1,3 +1,5 @@
+# Inventory.py
+
 class Inventory:
     # Minden playernek megvan a játék inventoryja. itt tároljuk a kártyáikat
     def __init__(self):
@@ -14,3 +16,12 @@ class Inventory:
 
     def get_all_cards(self):
         return [(card, x, y) for (x, y), card in self.grid.items()]
+
+    def get_inventory_bounds(self):
+        if not self.grid:
+            return 0, 0, 0, 0
+        min_x = min(x for x, y in self.grid.keys())
+        max_x = max(x for x, y in self.grid.keys())
+        min_y = min(y for x, y in self.grid.keys())
+        max_y = max(y for x, y in self.grid.keys())
+        return min_x, max_x, min_y, max_y
