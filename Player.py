@@ -1,9 +1,13 @@
-from Inventory import Inventory
 
+from Inventory import Inventory
+# A játékosok classja. tárolja a játékos szükséges adatait
 class Player:
-    # A játékosokhoz leíró class, tartalmazza a személyes scorejukat, színüket, inventoriukat, opcionálisan a board pozíciójukat
     def __init__(self, color, player_name, score=0):
         self.name = player_name
-        self.color = color  # Játékos színe
-        self.inventory = Inventory()  # Inventory initializálása
-        self.score = score  # A játékos score-ja, vagyis hogy mennyi token küldetést teljesített, ha eljut 10 ig a játékos nyer
+        self.color = color
+        self.inventory = Inventory()
+        self.score = score
+        self.total_movement = 0  # Mennyi lépést tett összesen
+
+    def add_movement(self, movement):
+        self.total_movement += movement
