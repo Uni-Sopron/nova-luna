@@ -8,6 +8,7 @@ import tkinter as tk
 
 class Game:
     def __init__(self, num_players):
+        # Játék inicializálása
         colors = ['white', 'red', 'blue', 'yellow']
         self.players = [Player(colors[i], f'Player{i+1}', is_ai=(i != 0)) for i in range(num_players)]
         self.deck = generate_cards(CARD_DATA)
@@ -22,13 +23,15 @@ class Game:
         self.card_board[0] = self.moon_marker
         self.last_positions = []
         self.turn_order = [p.name for p in self.players]
-        self.gui = None  # Added to reference the GUI
+        self.gui = None  # Hozzáadás a GUI hivatkozására
         self.deal()
 
     def set_gui(self, gui):
+        # GUI beállítása
         self.gui = gui
 
     def next_round(self):
+        # Körök lekezelése
         if self.is_game_over():
             self.end_game()
             return
@@ -50,6 +53,7 @@ class Game:
             self.gui.update_info()
 
     def move_player(self, player, card):
+        # Játékos mozgatása
         if self.is_game_over():
             self.end_game()
             return
@@ -65,10 +69,12 @@ class Game:
         self.check_end_game()
 
     def check_end_game(self):
+        # Nézze meg hogy véget ért-e a játék
         if self.is_game_over():
             self.end_game()
 
     def is_game_over(self):
+        # Ellenőrzi hogy a játék véget ért-e
         if any(player.score >= 10 for player in self.players):
             return True
         if all(card is None or card == self.moon_marker for card in self.card_board):
@@ -76,17 +82,20 @@ class Game:
         return False
 
     def end_game(self):
+        # Vége a játéknak
         print("Game Over.")
         scores = sorted([(player.name, player.score) for player in self.players], key=lambda x: x[1], reverse=True)
         self.show_end_game_window(scores)
 
     def deal(self):
+        # Kártyák kiosztása a táblára
         for i in range(len(self.card_board)):
             if self.card_board[i] is None and self.deck:
                 self.card_board[i] = self.deck.pop()
         self.check_end_game()
 
     def draw(self, player, card_position):
+        # Kártya kihúzása
         available_positions = self.get_available_card_positions()
         if card_position < 0 or card_position >= len(self.card_board):
             raise IndexError("Position out of bounds")
@@ -103,9 +112,11 @@ class Game:
         self.check_end_game()
 
     def get_number_of_cards_on_board(self):
+        # Megszámolja hágy kártya van a táblán
         return sum(1 for card in self.card_board if card is not None and card != self.moon_marker)
 
     def get_available_card_positions(self):
+        # Használható kártyák megkeresése a táblán
         positions = []
         current_position = self.moon_marker_position
         cards_found = 0
@@ -122,6 +133,7 @@ class Game:
         return positions
 
     def find_furthest_back_player(self):
+        # Megkeresi a leghátsó játékost
         furthest_back_position = min(self.player_positions.values())
         candidates = [player for player in self.players if self.player_positions[player.name] == furthest_back_position]
         if len(candidates) == 1:
@@ -134,10 +146,12 @@ class Game:
         return self.players[0]
 
     def show_end_game_window(self, scores):
+        # Game over ablak megjelenítése
         for name, score in scores:
             print(f"{name}: {score}")
 
     def ai_play_turn(self):
+        # AI játékos köre
         current_player = self.players[self.current_player_index]
         available_positions = self.get_available_card_positions()
         best_score = -1
@@ -168,15 +182,16 @@ class Game:
             self.moon_marker_position = available_positions[0]
             if self.get_number_of_cards_on_board() <= 3:
                 self.deal()
-            self.check_inventory(current_player)  # Check AI player's inventory for completed tokens
+            self.check_inventory(current_player)  # AI játékos inventoryjának ellenőrzése
             self.check_end_game()
             if self.gui:
                 self.gui.update_board()
                 self.gui.update_info()
-                self.gui.update_inventory_display_for_all()  # Ensure all inventories are updated
+                self.gui.update_inventory_display_for_all()  # Összes inventory frissítése
             self.next_round()
 
     def evaluate_placement(self, player, card, x, y):
+        # Kártya helyeinek pontozása
         score = 0
         adjacent_positions = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         counts = {'red': 0, 'green': 0, 'blue': 0, 'yellow': 0}
@@ -214,8 +229,9 @@ class Game:
         return score
 
     def is_valid_placement(self, player, x, y):
+        # Megnézi hogy hol vannak érvényes kártya helyek
         if player.inventory.get_card(x, y) is not None:
-            return False  # Ensure only empty spots are considered
+            return False  # Csak üres helyeket ellenőriz
         adjacent_positions = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for ax, ay in adjacent_positions:
             if player.inventory.get_card(ax, ay) is not None:
@@ -225,12 +241,14 @@ class Game:
         return False
 
     def check_inventory(self, player):
+        # Inventory ellenőrzése (token küldetésekre)
         for card, x, y in player.inventory.get_all_cards():
             for token in card.tokens:
                 if not token.is_completed:
                     self.check_token_completion(player, card, token, x, y)
 
     def check_token_completion(self, player, card, token, x, y):
+        # Token teljesülésének ellenőrzése
         print(f"Checking token completion for {player.name}: {token.__dict__}")
         directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
@@ -272,7 +290,7 @@ if __name__ == "__main__":
         from gui import NovaLunaGUI
         root = tk.Tk()
         app = NovaLunaGUI(root)
-        game.set_gui(app)  # Bind the GUI to the game
+        game.set_gui(app)  # GUI hozzákötése a játékhoz
         app.run()
     else:
         while not game.is_game_over():
