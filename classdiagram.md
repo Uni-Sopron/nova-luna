@@ -62,6 +62,7 @@ class Card {
     movement: int
     tokens: list[Token]
 }
+Inventory o-- "*" Card
 
 class Token {
     red: Optional[int]
