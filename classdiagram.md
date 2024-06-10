@@ -63,6 +63,7 @@ class Card {
     tokens: list[Token]
 }
 Inventory o-- "*" Card
+Game o-- "*" Card
 
 class Token {
     red: Optional[int]
