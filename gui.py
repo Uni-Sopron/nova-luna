@@ -329,45 +329,34 @@ class NovaLunaGUI:
             print("Invalid card selection. Please select a card within the first three positions from the moon marker.")
 
     def open_inventory_window(self, player_index=None):
-        # If the inventory window already exists, update its content instead of returning
-        if self.inventory_window and self.inventory_window.winfo_exists():
-            # Access the existing canvas and clear its content
-            inventory_frame = self.inventory_window.winfo_children()[0]
-            inventory_canvas = inventory_frame.winfo_children()[0]
-            inventory_canvas.delete("all")
-            
-            # Redraw the inventory for the new player index
-            self.draw_inventory(inventory_frame, inventory_canvas, player_index)
-            
-            # Re-center the view based on the new content
-            self.center_inventory_view(inventory_canvas)
-        else:
-            # Create a new inventory window if it doesn't exist
+        # Check if the inventory window is None before checking its existence
+        if self.inventory_window is None or not hasattr(self.inventory_window, 'winfo_exists') or not self.inventory_window.winfo_exists():
+            print("DEBUG: Creating new inventory window")
             self.inventory_window = tk.Toplevel(self.root)
             self.inventory_window.title("Inventory")
 
             inventory_frame = ttk.Frame(self.inventory_window)
             inventory_frame.pack(fill=tk.BOTH, expand=True)
 
-            inventory_canvas = tk.Canvas(inventory_frame)
-            inventory_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.inventory_canvas = tk.Canvas(inventory_frame)
+            self.inventory_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
             # Create scrollbars and attach them to the inventory frame and canvas
-            scrollbar_y = ttk.Scrollbar(inventory_frame, orient=tk.VERTICAL, command=inventory_canvas.yview)
+            scrollbar_y = ttk.Scrollbar(inventory_frame, orient=tk.VERTICAL, command=self.inventory_canvas.yview)
             scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
 
-            scrollbar_x = ttk.Scrollbar(self.inventory_window, orient=tk.HORIZONTAL, command=inventory_canvas.xview)
+            scrollbar_x = ttk.Scrollbar(self.inventory_window, orient=tk.HORIZONTAL, command=self.inventory_canvas.xview)
             scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
 
-            inventory_canvas.configure(xscrollcommand=scrollbar_x.set, yscrollcommand=scrollbar_y.set)
+            self.inventory_canvas.configure(xscrollcommand=scrollbar_x.set, yscrollcommand=scrollbar_y.set)
+        else:
+            print("DEBUG: Inventory window already exists, reusing it.")
 
-            inventory_inner_frame = ttk.Frame(inventory_canvas)
-            inventory_canvas.create_window((0, 0), window=inventory_inner_frame, anchor='nw')
+        inventory_inner_frame = ttk.Frame(self.inventory_canvas)
+        self.inventory_canvas.create_window((0, 0), window=inventory_inner_frame, anchor='nw')
 
-            self.draw_inventory(inventory_inner_frame, inventory_canvas, player_index)
-            self.center_inventory_view(inventory_canvas)
-
-
+        self.draw_inventory(inventory_inner_frame, self.inventory_canvas, player_index)
+        self.center_inventory_view(self.inventory_canvas)
 
     def center_inventory_view(self, inventory_canvas):
         # Inventory nézet igazítása
@@ -657,6 +646,209 @@ class NovaLunaGUI:
         window.destroy()
         app = NovaLunaGUI()  # Create a new instance of the NovaLunaGUI class
         app.run()
+
+    def run(self):
+        if self.root:
+            self.root.mainloop()
+        else:
+            self.initialize_window.mainloop()
+
+    def handle_ai_turn(self, current_player):
+        print(f"DEBUG: Handling AI turn for {current_player.name}")
+
+        # Ensure the inventory window is correctly managed
+        if self.inventory_window is None or not self.inventory_window.winfo_exists():
+            self.open_inventory_window()
+
+        available_positions = self.game.get_available_card_positions()
+        best_card_position = None
+        best_score = -1
+        best_card = None
+
+        # Clear any previous state specific to this AI turn
+        self.clear_ai_state()
+
+        # Recalculate grid bounds specifically for this player before evaluating
+        min_x, max_x, min_y, max_y = current_player.inventory.get_inventory_bounds()
+        print(f"DEBUG: Initial grid bounds for {current_player.name} - min_x: {min_x}, max_x: {max_x}, min_y: {min_y}, max_y: {max_y}")
+
+        for card_position in available_positions:
+            card = self.game.card_board[card_position]
+            print(f"DEBUG: Evaluating card at position {card_position} with movement {card.movement} and color {card.color}")
+
+            for x in range(min_x - 1, max_x + 2):
+                for y in range(min_y - 1, max_y + 2):
+                    print(f"DEBUG: Considering position ({x}, {y}) for placement...")
+                    if x < min_x - 1 or x > max_x + 1 or y < min_y - 1 or y > max_y + 1:
+                        print(f"DEBUG: Skipping out-of-bound move at ({x}, {y})...")
+                        continue
+
+                    if self.game.is_valid_placement(current_player, x, y):
+                        score = self.game.evaluate_placement(current_player, card, x, y)
+                        print(f"DEBUG: Placement score for ({x}, {y}): {score}")
+                        if score > best_score:
+                            best_score = score
+                            best_card_position = (x, y)
+                            best_card = card
+                            print(f"DEBUG: New best position found at ({x}, {y}) with score {score}")
+                    else:
+                        print(f"DEBUG: Illegal move detected at ({x}, {y}), skipping...")
+
+        if best_card is not None and best_card_position is not None:
+            print(f"DEBUG: Picked card {best_card.color} with movement {best_card.movement}")
+            self.display_picked_card(best_card)
+
+            # Ensure the inventory window is fully set up before applying the highlight
+            self.root.after(100, lambda: self.highlight_inventory_position(current_player, best_card_position))
+
+            # Show the next button to proceed
+            self.show_next_button(lambda: self.continue_ai_turn(current_player, best_card, best_card_position))
+        
+        # Refill the card board if necessary
+        self.refill_card_board_if_needed
+        
+    def highlight_inventory_position(self, player, position):
+        print(f"DEBUG: Attempting to highlight inventory position {position} for {player.name}")
+            
+        size = 60
+        margin = 5
+        x, y = position
+            
+        # Ensure that position is within the current bounds of the inventory
+        min_x, max_x, min_y, max_y = player.inventory.get_inventory_bounds()
+        print(f"DEBUG: Current grid bounds - min_x: {min_x}, max_x: {max_x}, min_y: {min_y}, max_y: {max_y}")
+
+        # Calculating the highlight position based on the grid
+        x0 = (x - min_x + 1) * (size + margin)
+        y0 = (y - min_y + 1) * (size + margin)
+        x1 = x0 + size
+        y1 = y0 + size
+            
+        print(f"DEBUG: Calculated highlight position: x0={x0}, y0={y0}, x1={x1}, y1={y1}")
+            
+        # Ensure it's not out of bounds before drawing
+        if x < min_x - 1 or x > max_x + 1 or y < min_y - 1 or y > max_y + 1:
+            print(f"DEBUG: Calculated highlight position is out of bounds, not drawing.")
+        else:
+            # Draw the highlight
+            if hasattr(self, 'inventory_canvas') and self.inventory_canvas.winfo_exists():
+                print(f"DEBUG: Drawing highlight rectangle from ({x0}, {y0}) to ({x1}, {y1})")
+                self.inventory_canvas.create_rectangle(x0, y0, x1, y1, outline='orange', width=6)
+            else:
+                print("DEBUG: Inventory canvas does not exist or is not ready!")
+
+
+    def continue_ai_turn(self, current_player, picked_card=None, best_card_position=None):
+        if picked_card and best_card_position is not None:
+            x, y = best_card_position
+            
+            print(f"DEBUG: Adding card at ({x}, {y}) in inventory")
+            current_player.inventory.add_card(picked_card, x, y)
+            
+            # Assuming that best_card_position is an inventory position, not a card board index
+            card_board_index = self.game.card_board.index(picked_card)  # Find the correct index of the card in the card board
+            self.game.card_board[card_board_index] = None  # Remove the card from the card board
+            
+            self.game.move_player(current_player, picked_card)
+            self.game.moon_marker_position = card_board_index  # Move the moon marker to this index
+
+            # Check if the card board needs to be refilled
+            self.refill_card_board_if_needed()
+
+        self.hide_next_button()
+        self.update_board()  # Update the board after the move
+        self.check_inventory(current_player)
+        self.game.next_round()
+
+    def clear_ai_state(self):
+        """Clear any state that might influence the AI's decision-making process."""
+        print("DEBUG: Clearing AI state to ensure a fresh turn evaluation.")
+        # Reset any AI-specific temporary variables or flags if necessary.
+
+    def display_picked_card(self, card):
+        # Display the picked card to the right of the deck size counter
+        if hasattr(self, 'picked_card_canvas') and self.picked_card_canvas.winfo_exists():
+            self.picked_card_canvas.delete("all")
+        else:
+            # Pack the label and canvas to the right of the card counter
+            self.picked_card_label = tk.Label(self.info_frame, text="Picked card:")
+            self.picked_card_label.pack(side=tk.LEFT, padx=20)
+
+            self.picked_card_canvas = tk.Canvas(self.info_frame, width=100, height=150)
+            self.picked_card_canvas.pack(side=tk.LEFT, padx=10)
+
+        # Draw the card on the canvas
+        self.picked_card_canvas.create_rectangle(10, 10, 90, 90, outline=card.color, width=4)
+        self.picked_card_canvas.create_text(25, 25, text=str(card.movement), font=("Arial", 14))
+
+        # Draw the tokens on the card
+        if card.tokens:
+            if len(card.tokens) > 0:
+                token1 = card.tokens[0]
+                self.draw_token(self.picked_card_canvas, 60, 15, token1)
+            if len(card.tokens) > 1:
+                token2 = card.tokens[1]
+                self.draw_token(self.picked_card_canvas, 20, 60, token2)
+            if len(card.tokens) > 2:
+                token3 = card.tokens[2]
+                self.draw_token(self.picked_card_canvas, 60, 60, token3)
+
+    def draw_token(self, canvas, x, y, token):
+        # Draw the tokens on the canvas at specified (x, y) position
+        colors = []
+        if token.red:
+            colors.extend(['red'] * token.red)
+        if token.green:
+            colors.extend(['green'] * token.green)
+        if token.blue:
+            colors.extend(['blue'] * token.blue)
+        if token.yellow:
+            colors.extend(['yellow'] * token.yellow)
+        for i, color in enumerate(colors):
+            row = i // 2
+            col = i % 2
+            canvas.create_oval(x + col * 10, y + row * 10, x + 10 + col * 10, y + 10 + row * 10, fill=color)
+
+    def highlight_inventory_position(self, player, position):
+        print(f"DEBUG: Attempting to highlight inventory position {position} for {player.name}")
+        
+        size = 60
+        margin = 5
+        x, y = position
+        
+        # Ensure that position is within the current bounds of the inventory
+        min_x, max_x, min_y, max_y = player.inventory.get_inventory_bounds()
+        print(f"DEBUG: Current grid bounds - min_x: {min_x}, max_x: {max_x}, min_y: {min_y}, max_y: {max_y}")
+
+        # Calculating the highlight position based on the grid
+        x0 = (x - min_x + 1) * (size + margin)
+        y0 = (y - min_y + 1) * (size + margin)
+        x1 = x0 + size
+        y1 = y0 + size
+        
+        print(f"DEBUG: Calculated highlight position: x0={x0}, y0={y0}, x1={x1}, y1={y1}")
+        
+        # Ensure it's not out of bounds before drawing
+        if x < min_x - 1 or x > max_x + 1 or y < min_y - 1 or y > max_y + 1:
+            print(f"DEBUG: Calculated highlight position is out of bounds, not drawing.")
+        else:
+            # Draw the highlight
+            if hasattr(self, 'inventory_canvas') and self.inventory_canvas.winfo_exists():
+                print(f"DEBUG: Drawing highlight rectangle from ({x0}, {y0}) to ({x1}, {y1})")
+                self.inventory_canvas.create_rectangle(x0, y0, x1, y1, outline='orange', width=6)
+            else:
+                print("DEBUG: Inventory canvas does not exist or is not ready!")
+
+    def show_next_button(self, command):
+        # Create a Next button that advances the AI's turn
+        self.next_button = tk.Button(self.info_frame, text="Next", command=command)
+        self.next_button.pack(side=tk.TOP, pady=10)
+
+
+    def hide_next_button(self):
+        if hasattr(self, 'next_button') and self.next_button.winfo_exists():
+            self.next_button.destroy()
+
 
     def run(self):
         if self.root:
