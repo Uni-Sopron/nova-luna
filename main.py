@@ -1,17 +1,15 @@
 import random
 from Player import Player
-from Card import Card
-from Inventory import Inventory
-from Token import Token
 from card_generator import generate_cards, CARD_DATA
 import tkinter as tk
 
 class Game:
-    def __init__(self, num_players):
+    def __init__(self, num_players, goal=20):
         # Játék inicializálása
-        colors = ['white', 'red', 'blue', 'yellow']
+        colors = ['white', 'orange', 'pink', 'teal']
         self.players = [Player(colors[i], f'Player{i+1}', is_ai=(i != 0)) for i in range(num_players)]
         self.deck = generate_cards(CARD_DATA)
+        self.goal = goal  # Set the goal for the game
         self.current_player_index = 0
         self.board = [[] for _ in range(24)]
         for player in self.players:
@@ -22,7 +20,7 @@ class Game:
         self.moon_marker_position = 0
         self.card_board[0] = self.moon_marker
         self.last_positions = []
-        self.turn_order = [p.name for p in self.players]
+        self.turn_order = [p.name for p in reversed(self.players)]
         self.gui = None  # Hozzáadás a GUI hivatkozására
         self.deal()
 
@@ -35,7 +33,6 @@ class Game:
         if self.is_game_over():
             self.end_game()
             return
-        current_player = self.players[self.current_player_index]
         least_movement = min(p.total_movement for p in self.players)
         candidates = [p for p in self.players if p.total_movement == least_movement]
         if len(candidates) == 1:
@@ -53,7 +50,7 @@ class Game:
             self.gui.update_info()
 
     def move_player(self, player, card):
-        # Játékos mozgatása
+        # Move player based on card movement
         if self.is_game_over():
             self.end_game()
             return
@@ -61,11 +58,18 @@ class Game:
         current_position = self.player_positions[player.name]
         new_position = (current_position + movement) % len(self.board)
 
+        # Remove player from current position
         self.board[current_position].remove(player)
+
+        # Add player to the new position at the end of the list
         self.board[new_position].append(player)
+
+        # Update the player's position
         self.player_positions[player.name] = new_position
         player.add_movement(movement)
         self.last_positions.append((player.name, new_position))
+        if self.gui:
+            self.gui.player_has_moved(player)
         self.check_end_game()
 
     def check_end_game(self):
@@ -75,7 +79,7 @@ class Game:
 
     def is_game_over(self):
         # Ellenőrzi hogy a játék véget ért-e
-        if any(player.score >= 10 for player in self.players):
+        if any(player.score >= self.goal for player in self.players):
             return True
         if all(card is None or card == self.moon_marker for card in self.card_board):
             return True
@@ -93,6 +97,10 @@ class Game:
             if self.card_board[i] is None and self.deck:
                 self.card_board[i] = self.deck.pop()
         self.check_end_game()
+
+    def get_remaining_cards(self):
+        # Return the number of remaining cards in the deck
+        return len(self.deck)
 
     def draw(self, player, card_position):
         # Kártya kihúzása
@@ -147,8 +155,12 @@ class Game:
 
     def show_end_game_window(self, scores):
         # Game over ablak megjelenítése
-        for name, score in scores:
-            print(f"{name}: {score}")
+        if self.gui:
+            self.gui.show_end_game_window(scores)
+        else:
+            # Fallback to print if GUI is not available
+            for name, score in scores:
+                print(f"{name}: {score}")
 
     def ai_play_turn(self):
         # AI játékos köre
@@ -187,7 +199,7 @@ class Game:
             if self.gui:
                 self.gui.update_board()
                 self.gui.update_info()
-                self.gui.update_inventory_display_for_all()  # Összes inventory frissítése
+                self.gui.update_inventory()  # Összes inventory frissítése
             self.next_round()
 
     def evaluate_placement(self, player, card, x, y):
