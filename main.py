@@ -82,7 +82,7 @@ class Game:
         # Ellenőrzi hogy a játék véget ért-e
         if any(player.score >= self.goal for player in self.players):
             return True
-        if all(card is None or card == self.moon_marker for card in self.card_board):
+        if all(card is None or card == self.moon_marker for card in self.card_board) and len(self.deck) == 0:
             return True
         return False
 
