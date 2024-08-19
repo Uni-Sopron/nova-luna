@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
-from main import Game
+from game import Game
 
 class NovaLunaGUI:
     def __init__(self):
