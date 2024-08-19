@@ -845,7 +845,3 @@ class NovaLunaGUI:
             self.root.mainloop()
         else:
             self.initialize_window.mainloop()
-
-if __name__ == "__main__":
-    app = NovaLunaGUI()
-    app.run()
