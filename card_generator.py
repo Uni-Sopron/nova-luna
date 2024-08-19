@@ -2,10 +2,7 @@
 
 from Card import Card
 import random
-from Token import Token, generate_token_combinations, get_token_with_colors
-
-# Minden lehetséges használható tokent tartalmazó lista feltöltése
-all_tokens = generate_token_combinations()
+from Token import get_token_with_colors
 
 """ Használati példa:
 token = get_token_with_colors(red_count=2, green_count=1, blue_count=1)

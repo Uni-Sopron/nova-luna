@@ -1,17 +1,15 @@
 import random
 from Player import Player
-from Card import Card
-from Inventory import Inventory
-from Token import Token
 from card_generator import generate_cards, CARD_DATA
 import tkinter as tk
 
 class Game:
-    def __init__(self, num_players):
+    def __init__(self, num_players, goal=20):
         # Játék inicializálása
-        colors = ['white', 'red', 'blue', 'yellow']
+        colors = ['white', 'orange', 'pink', 'teal']
         self.players = [Player(colors[i], f'Player{i+1}', is_ai=(i != 0)) for i in range(num_players)]
         self.deck = generate_cards(CARD_DATA)
+        self.goal = goal  # Set the goal for the game
         self.current_player_index = 0
         self.board = [[] for _ in range(24)]
         for player in self.players:
@@ -22,7 +20,7 @@ class Game:
         self.moon_marker_position = 0
         self.card_board[0] = self.moon_marker
         self.last_positions = []
-        self.turn_order = [p.name for p in self.players]
+        self.turn_order = [p.name for p in reversed(self.players)]
         self.gui = None  # Hozzáadás a GUI hivatkozására
         self.deal()
 
@@ -35,7 +33,6 @@ class Game:
         if self.is_game_over():
             self.end_game()
             return
-        current_player = self.players[self.current_player_index]
         least_movement = min(p.total_movement for p in self.players)
         candidates = [p for p in self.players if p.total_movement == least_movement]
         if len(candidates) == 1:
@@ -50,10 +47,11 @@ class Game:
             self.ai_play_turn()
         if self.gui:
             self.gui.update_board()
+            self.gui.update_inventory()
             self.gui.update_info()
 
     def move_player(self, player, card):
-        # Játékos mozgatása
+        # Move player based on card movement
         if self.is_game_over():
             self.end_game()
             return
@@ -61,11 +59,18 @@ class Game:
         current_position = self.player_positions[player.name]
         new_position = (current_position + movement) % len(self.board)
 
+        # Remove player from current position
         self.board[current_position].remove(player)
+
+        # Add player to the new position at the end of the list
         self.board[new_position].append(player)
+
+        # Update the player's position
         self.player_positions[player.name] = new_position
         player.add_movement(movement)
         self.last_positions.append((player.name, new_position))
+        if self.gui:
+            self.gui.player_has_moved(player)
         self.check_end_game()
 
     def check_end_game(self):
@@ -75,7 +80,7 @@ class Game:
 
     def is_game_over(self):
         # Ellenőrzi hogy a játék véget ért-e
-        if any(player.score >= 10 for player in self.players):
+        if any(player.score >= self.goal for player in self.players):
             return True
         if all(card is None or card == self.moon_marker for card in self.card_board):
             return True
@@ -93,6 +98,10 @@ class Game:
             if self.card_board[i] is None and self.deck:
                 self.card_board[i] = self.deck.pop()
         self.check_end_game()
+
+    def get_remaining_cards(self):
+        # Return the number of remaining cards in the deck
+        return len(self.deck)
 
     def draw(self, player, card_position):
         # Kártya kihúzása
@@ -147,48 +156,58 @@ class Game:
 
     def show_end_game_window(self, scores):
         # Game over ablak megjelenítése
-        for name, score in scores:
-            print(f"{name}: {score}")
+        if self.gui:
+            self.gui.show_end_game_window(scores)
+        else:
+            # Fallback to print if GUI is not available
+            for name, score in scores:
+                print(f"{name}: {score}")
 
     def ai_play_turn(self):
-        # AI játékos köre
+        # AI player's turn logic
         current_player = self.players[self.current_player_index]
-        available_positions = self.get_available_card_positions()
-        best_score = -1
-        best_card = None
-        best_position = None
 
-        print(f"AI {current_player.name} is evaluating positions...")
+        if self.gui and not self.gui.fastmode_var.get():
+            # If fastmode is off and the GUI is active, handle the AI turn within the GUI context
+            self.gui.handle_ai_turn(current_player)
+        else:
+            # Fastmode is on or GUI is not present, proceed with the AI turn normally
+            available_positions = self.get_available_card_positions()
+            best_score = -1
+            best_card = None
+            best_position = None
 
-        for card_position in available_positions:
-            card = self.card_board[card_position]
-            min_x, max_x, min_y, max_y = current_player.inventory.get_inventory_bounds()
-            for x in range(min_x - 1, max_x + 2):
-                for y in range(min_y - 1, max_y + 2):
-                    if self.is_valid_placement(current_player, x, y):
-                        score = self.evaluate_placement(current_player, card, x, y)
-                        print(f"Evaluating card at position {card_position} for placement at ({x}, {y}) with score {score}")
-                        if score > best_score:
-                            best_score = score
-                            best_card = card
-                            best_position = (x, y)
+            for card_position in available_positions:
+                card = self.card_board[card_position]
+                min_x, max_x, min_y, max_y = current_player.inventory.get_inventory_bounds()
+                for x in range(min_x - 1, max_x + 2):
+                    for y in range(min_y - 1, max_y + 2):
+                        if self.is_valid_placement(current_player, x, y):
+                            score = self.evaluate_placement(current_player, card, x, y)
+                            if score > best_score:
+                                best_score = score
+                                best_card = card
+                                best_position = (x, y)
 
-        if best_card and best_position:
-            x, y = best_position
-            print(f"AI {current_player.name} decided to place card {best_card.color} with movement {best_card.movement} at ({x}, {y})")
-            current_player.inventory.add_card(best_card, x, y)
-            self.card_board[available_positions[0]] = None
-            self.move_player(current_player, best_card)
-            self.moon_marker_position = available_positions[0]
-            if self.get_number_of_cards_on_board() <= 3:
-                self.deal()
-            self.check_inventory(current_player)  # AI játékos inventoryjának ellenőrzése
-            self.check_end_game()
-            if self.gui:
-                self.gui.update_board()
-                self.gui.update_info()
-                self.gui.update_inventory_display_for_all()  # Összes inventory frissítése
-            self.next_round()
+            if best_card and best_position:
+                x, y = best_position
+                current_player.inventory.add_card(best_card, x, y)
+                self.card_board[available_positions[0]] = None
+                self.move_player(current_player, best_card)
+                self.moon_marker_position = available_positions[0]
+
+                if self.get_number_of_cards_on_board() <= 3:
+                    self.deal()
+
+                self.check_inventory(current_player)  # Check AI player's inventory for completed tokens
+                self.check_end_game()
+                if self.gui:
+                    self.gui.update_board()
+                    self.gui.update_info()
+                    self.gui.update_inventory()  # Update all inventories
+                self.next_round()
+
+
 
     def evaluate_placement(self, player, card, x, y):
         # Kártya helyeinek pontozása
