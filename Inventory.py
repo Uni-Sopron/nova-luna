@@ -1,5 +1,10 @@
 # Inventory.py
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)  # Default level is INFO
+logger = logging.getLogger(__name__)
 class Inventory:
     # Minden playernek megvan a játék inventoryja. itt tároljuk a kártyáikat
     def __init__(self):
@@ -8,7 +13,7 @@ class Inventory:
         self.center_y = 0
 
     def add_card(self, card, x, y):
-        print(f"Adding card at ({x}, {y})")
+        logger.info(f"Adding card at ({x}, {y})")
         self.grid[(x, y)] = card
 
     def get_card(self, x, y):

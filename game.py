@@ -2,6 +2,11 @@ import random
 from Player import Player
 from card_generator import generate_cards, CARD_DATA
 import tkinter as tk
+from ai import get_ai_move
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Game:
     def __init__(self, num_players, goal=20):
@@ -21,12 +26,25 @@ class Game:
         self.card_board[0] = self.moon_marker
         self.last_positions = []
         self.turn_order = [p.name for p in reversed(self.players)]
-        self.gui = None  # Hozzáadás a GUI hivatkozására
+        self.gui = None  # Reference to GUI
         self.deal()
 
     def set_gui(self, gui):
         # GUI beállítása
         self.gui = gui
+
+    # Add these methods to exclude GUI from deepcopy:
+    def __getstate__(self):
+        """Prepare the state for pickling by removing non-picklable attributes."""
+        state = self.__dict__.copy()
+        if 'gui' in state:
+            del state['gui']
+        return state
+
+    def __setstate__(self, state):
+        """Restore the state after unpickling."""
+        self.__dict__.update(state)
+        self.gui = None  # Re-initialize GUI reference to None
 
     def next_round(self):
         # Körök lekezelése
@@ -88,7 +106,7 @@ class Game:
 
     def end_game(self):
         # Vége a játéknak
-        print("Game Over.")
+        logger.info("Game Over.")
         scores = sorted([(player.name, player.score) for player in self.players], key=lambda x: x[1], reverse=True)
         self.show_end_game_window(scores)
 
@@ -159,54 +177,41 @@ class Game:
         if self.gui:
             self.gui.show_end_game_window(scores)
         else:
-            # Fallback to print if GUI is not available
+            # Fallback to logging if GUI is not available
             for name, score in scores:
-                print(f"{name}: {score}")
+                logger.info(f"{name}: {score}")
 
     def ai_play_turn(self):
-        # AI player's turn logic
         current_player = self.players[self.current_player_index]
-
-        if self.gui and not self.gui.fastmode_var.get():
-            # If fastmode is off and the GUI is active, handle the AI turn within the GUI context
-            self.gui.handle_ai_turn(current_player)
+        if self.gui:
+            # Start AI computation in a separate thread
+            ai_thread = threading.Thread(target=self.gui.handle_ai_turn, args=(current_player,))
+            ai_thread.start()
         else:
-            # Fastmode is on or GUI is not present, proceed with the AI turn normally
-            available_positions = self.get_available_card_positions()
-            best_score = -1
-            best_card = None
-            best_position = None
+            # Non-GUI version remains the same
 
-            for card_position in available_positions:
-                card = self.card_board[card_position]
-                min_x, max_x, min_y, max_y = current_player.inventory.get_inventory_bounds()
-                for x in range(min_x - 1, max_x + 2):
-                    for y in range(min_y - 1, max_y + 2):
-                        if self.is_valid_placement(current_player, x, y):
-                            score = self.evaluate_placement(current_player, card, x, y)
-                            if score > best_score:
-                                best_score = score
-                                best_card = card
-                                best_position = (x, y)
-
-            if best_card and best_position:
-                x, y = best_position
-                current_player.inventory.add_card(best_card, x, y)
-                self.card_board[available_positions[0]] = None
-                self.move_player(current_player, best_card)
-                self.moon_marker_position = available_positions[0]
-
-                if self.get_number_of_cards_on_board() <= 3:
-                    self.deal()
-
-                self.check_inventory(current_player)  # Check AI player's inventory for completed tokens
-                self.check_end_game()
-                if self.gui:
-                    self.gui.update_board()
-                    self.gui.update_info()
-                    self.gui.update_inventory()  # Update all inventories
+            move = get_ai_move(self, current_player, depth=2)  # Adjust depth as needed
+            if move:
+                self.apply_move(current_player, move)
+                self.turn_order.append(current_player.name)
+                self.next_round()
+            else:
+                logger.debug(f"{current_player.name} has no valid moves.")
+                self.turn_order.append(current_player.name)
                 self.next_round()
 
+
+    def apply_move(self, player, move):
+        card_position, (x, y) = move
+        card = self.card_board[card_position]
+        player.inventory.add_card(card, x, y)
+        self.card_board[card_position] = None
+        self.move_player(player, card)
+        self.moon_marker_position = card_position
+        if self.get_number_of_cards_on_board() <= 3:
+            self.deal()
+        self.check_inventory(player)
+        self.check_end_game()
 
 
     def evaluate_placement(self, player, card, x, y):
@@ -267,37 +272,47 @@ class Game:
                     self.check_token_completion(player, card, token, x, y)
 
     def check_token_completion(self, player, card, token, x, y):
-        # Token teljesülésének ellenőrzése
-        print(f"Checking token completion for {player.name}: {token.__dict__}")
+        logger.debug(f"Checking token completion for {player.name}: {token.__dict__}")
         directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 
-        def count_color_chain(nx, ny, color, visited):
-            if (nx, ny) in visited or (nx == x and ny == y):
-                return 0
-            visited.add((nx, ny))
-            count = 1
-            for dx, dy in directions:
-                adj_x, adj_y = nx + dx, ny + dy
-                neighbor_card = player.inventory.get_card(adj_x, adj_y)
-                if neighbor_card and neighbor_card.color == color:
-                    count += count_color_chain(adj_x, adj_y, color, visited)
-            return count
-
         counts = {color: 0 for color in ['red', 'green', 'blue', 'yellow']}
-        visited = set()
 
         for dx, dy in directions:
             adj_x, adj_y = x + dx, y + dy
             neighbor_card = player.inventory.get_card(adj_x, adj_y)
             if neighbor_card and neighbor_card.color in counts:
-                chain_count = count_color_chain(adj_x, adj_y, neighbor_card.color, visited)
+                chain_count, _ = self.count_color_chain(
+                    player, adj_x, adj_y, neighbor_card.color, exclude_position=(x, y)
+                )
                 counts[neighbor_card.color] += chain_count
 
         for color, required_count in token.__dict__.items():
             if required_count and counts.get(color, 0) < required_count:
-                print(f"Token not completed for {player.name}: needed {required_count} {color}, found {counts[color]}")
+                logger.debug(
+                    f"Token not completed for {player.name}: needed {required_count} {color}, found {counts[color]}"
+                )
                 return
 
         token.is_completed = True
         player.score += 1
-        print(f"{player.name} completed a token! New score: {player.score}")
+        logger.info(f"{player.name} completed a token! New score: {player.score}")
+
+            
+    def count_color_chain(self, player, x, y, color, exclude_position=None):
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        visited = set()
+        count = self._count_color_chain_recursive(player, x, y, color, visited, directions, exclude_position)
+        return count, visited
+
+
+    def _count_color_chain_recursive(self, player, nx, ny, color, visited, directions, exclude_position):
+        if (nx, ny) in visited or (exclude_position and (nx, ny) == exclude_position):
+            return 0
+        visited.add((nx, ny))
+        count = 1
+        for dx, dy in directions:
+            adj_x, adj_y = nx + dx, ny + dy
+            neighbor_card = player.inventory.get_card(adj_x, adj_y)
+            if neighbor_card and neighbor_card.color == color:
+                count += self._count_color_chain_recursive(player, adj_x, adj_y, color, visited, directions, exclude_position)
+        return count
