@@ -6,10 +6,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 def get_ai_move(game, ai_player, depth=3):
-    # Save the original logging level
+    # Eredeti logging szint mentése
     original_level = logging.getLogger().getEffectiveLevel()
     
-    # Set logging level to WARNING to suppress DEBUG and INFO messages during AI simulations
+    # logging szint átálítása WARNING-ra AI számítások alatt hogy ne clutterelje a konzolt
     logging.getLogger().setLevel(logging.WARNING)
     best_move = None
     best_value = float('-inf')
@@ -25,20 +25,20 @@ def get_ai_move(game, ai_player, depth=3):
             best_value = ai_value
             best_move = move
 
-    # Restore the original logging level
+    # Eredeti logging szint vissza álíttása
     logging.getLogger().setLevel(original_level)
 
     return best_move
 
 def maxn(game, depth, current_player):
     if depth == 0 or game.is_game_over():
-        return evaluate_game_state(game)
+        return evaluate_game_state(game, current_player)
 
     values = {player.name: float('-inf') for player in game.players}
     possible_moves = get_possible_moves(game, current_player)
 
     if not possible_moves:
-        # If the current player has no moves, skip to the next player
+        # Ha nem tud lépni átlép a következő játékosra
         next_player = get_next_player(game, current_player)
         return maxn(game, depth, next_player)
 
@@ -60,7 +60,7 @@ def get_possible_moves(game, player):
 
     for card_position in available_positions:
         card = game.card_board[card_position]
-        # Generate valid placements
+        # Legális lépések generálása
         for x in range(min_x - 1, max_x + 2):
             for y in range(min_y - 1, max_y + 2):
                 if game.is_valid_placement(player, x, y):
@@ -73,39 +73,87 @@ def apply_move(game, player, move):
     player.inventory.add_card(card, x, y)
     game.card_board[card_position] = None
     game.move_player(player, card)
+
+    # Hold jelző eltávlítása a jelenlegi pocíziójábol
+    for i in range(len(game.card_board)):
+        if game.card_board[i] == game.moon_marker:
+            game.card_board[i] = None
+            break
+
+    # Hold jelző mozgatása az új pozicióra
     game.moon_marker_position = card_position
-    if game.get_number_of_cards_on_board() <= 3:
+    game.card_board[card_position] = game.moon_marker
+
+    if game.get_number_of_cards_on_board() < 3:
         game.deal()
     game.check_inventory(player)
     game.check_end_game()
 
-def evaluate_game_state(game):
+
+def evaluate_game_state(game, ai_player):
     values = {}
     for player in game.players:
-        score = player.score * 4  # Each completed token is worth 4 points
+        score = player.score * 4  # 4 pont teljesített tokenekért(vagy másnéven szerzett score-ért)
 
         total_advancement = 0
         tokens = []
 
-        # Collect all tokens from the player's inventory
+        # Tokenek össze gyüjtése a játékos inventoryjábol
         for card, x, y in player.inventory.get_all_cards():
             tokens.extend(card.tokens)
 
-        # Iterate over the tokens
+        # Tokenek haladásának a számolása
         for token in tokens:
             if not token.is_completed:
                 advancement = get_token_advancement(game, player, token)
                 total_advancement += advancement
 
-        score += total_advancement * 1  # Each advancement towards incomplete tokens is worth 1 point
+        # MI személysiség alapján döntés át pontozás
+        if player.name == ai_player.name:
+            personality = ai_player.ai_personality
+            if personality == "Power":
+                # Nem veszi figyelembe a mozgás árát
+                movement_penalty = 0
+                # A többi érték változatlan
+                score += total_advancement * 1
+            elif personality == "Combo":
+                # Bonusz ha több kört vesz egymás után
+                consecutive_turns = get_consecutive_turns(game, player)
+                score += consecutive_turns * 3
+                # A többi változatlan
+                movement_penalty = player.total_movement * 0.1
+                score += total_advancement * 1
+            elif personality == "Greedy":
+                # Token teljesítést nem veszi figyelembe
+                score = 0  # A többi változatlan
+                score += total_advancement * 1
+                movement_penalty = player.total_movement * 0.1
+            else:  # Balanced vagy default
+                movement_penalty = player.total_movement * 0.1
+                score += total_advancement * 1
+        else:
+            # Ellenfelekre a default személyiséget használja
+            movement_penalty = player.total_movement * 0.1
+            score += total_advancement * 1
 
         if player.score >= game.goal:
-            score += 200  # Extra points for reaching or exceeding the goal
+            score += 200  # Jelentős extra pontozás a cél pontszám eléréséért
 
-        # Adjust score based on total movement (lower movement is better)
-        score -= player.total_movement * 0.1
+        # Mozgás büntetés levonása a pontszámbol
+        score -= movement_penalty
+
         values[player.name] = score
     return values
+
+def get_consecutive_turns(game, player):
+    count = 0
+    # Átnézi fordított sorrendben hogy hányszor volt egymás utáni köre
+    for player_name in reversed(game.turn_order):
+        if player_name == player.name:
+            count += 1
+        else:
+            break
+    return count
 
 
 def get_token_advancement(game, player, token):

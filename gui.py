@@ -6,9 +6,9 @@ import threading
 import queue
 import logging
 
-# Configure logging
+# logging konfigurálása
 logging.basicConfig(
-    level=logging.INFO,  # Set default logging level to INFO
+    level=logging.INFO,  # Default szint az INFO
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -54,29 +54,37 @@ class NovaLunaGUI:
         ai_frame = tk.Frame(self.initialize_window)
         ai_frame.pack(pady=10)
 
-        tk.Label(ai_frame, text="AI Toggle:").grid(row=0, column=0, padx=10)
+        tk.Label(ai_frame, text="AI Personality:").grid(row=0, column=0, padx=10)
+
+        # Define the AI personality options
+        ai_personality_options = ["Human", "Balanced", "Power", "Combo", "Greedy"]
+        self.ai_personality_vars = []
 
         for i in range(4):
-            var = tk.BooleanVar(value=False)
-            self.ai_vars.append(var)
-            check = tk.Checkbutton(
+            var = tk.StringVar(value="Human")
+            self.ai_personality_vars.append(var)
+            label = tk.Label(ai_frame, text=f"Player {i + 1}")
+            label.grid(row=i + 1, column=0, padx=5, sticky='w')
+            option_menu = tk.OptionMenu(
                 ai_frame,
-                text=f"Player {i + 1}",
-                variable=var,
-                state=tk.NORMAL if i < self.num_players_var.get() else tk.DISABLED
+                var,
+                *ai_personality_options
             )
-            check.grid(row=i + 1, column=0, padx=5, sticky='w')
+            option_menu.grid(row=i + 1, column=1, padx=5, sticky='w')
+            # Disable the OptionMenu if the player is not in the game
+            if i >= self.num_players_var.get():
+                option_menu.config(state=tk.DISABLED)
 
-        def update_ai_toggle_state(*args):
+        def update_ai_personality_state(*args):
             for i in range(4):
-                check = ai_frame.grid_slaves(row=i + 1, column=0)[0]
+                option_menu = ai_frame.grid_slaves(row=i + 1, column=1)[0]
                 if i < self.num_players_var.get():
-                    check.config(state=tk.NORMAL)
+                    option_menu.config(state=tk.NORMAL)
                 else:
-                    check.config(state=tk.DISABLED)
-                    self.ai_vars[i].set(False)
+                    option_menu.config(state=tk.DISABLED)
+                    self.ai_personality_vars[i].set("Human")
 
-        self.num_players_var.trace("w", update_ai_toggle_state)
+        self.num_players_var.trace("w", update_ai_personality_state)
 
         # Fastmode Checkbox
         fastmode_check = tk.Checkbutton(
@@ -92,12 +100,17 @@ class NovaLunaGUI:
     def start_game(self):
         num_players = self.num_players_var.get()
         goal = self.goal_var.get()
-        fastmode = self.fastmode_var.get()  # Get the Fastmode status
 
         self.game = Game(num_players, goal)
 
         for i in range(num_players):
-            self.game.players[i].is_ai = self.ai_vars[i].get()
+            ai_personality = self.ai_personality_vars[i].get()
+            if ai_personality != "Human":
+                self.game.players[i].is_ai = True
+                self.game.players[i].ai_personality = ai_personality
+            else:
+                self.game.players[i].is_ai = False
+                self.game.players[i].ai_personality = None
 
         self.initialize_window.destroy()  # Destroy the setup window
         self.initialize_game()
@@ -112,9 +125,6 @@ class NovaLunaGUI:
         self.available_positions = []
         self.inventory_window = None
         self.all_players_moved = False  # Initialize this attribute
-
-        # Reinitialize ai_vars based on the actual game state
-        self.ai_vars = [tk.BooleanVar(value=player.is_ai) for player in self.game.players]
 
         self.create_widgets()
         self.update_board()
@@ -201,29 +211,6 @@ class NovaLunaGUI:
         for i, player in enumerate(self.game.players):
             inventory_button = self.create_inventory_button(f"Player{i+1}", i)
             inventory_button.pack(pady=5, side=tk.LEFT, in_=inventory_button_frame)
-
-        # AI toggle controls placed on the right of the inventory buttons
-        ai_frame = tk.Frame(control_frame)
-        ai_frame.pack(side=tk.LEFT, padx=20)
-
-        ai_label = tk.Label(ai_frame, text="AI Toggle")
-        ai_label.pack(side=tk.LEFT, padx=10)
-
-        # Create checkbuttons for each player to toggle AI control
-        for i, player in enumerate(self.game.players):
-            player_check = tk.Checkbutton(
-                ai_frame, 
-                text=f"Player{i+1}", 
-                variable=self.ai_vars[i], 
-                command=lambda i=i: self.toggle_ai(i)
-            )
-            player_check.pack(side=tk.LEFT, padx=5)
-
-    def toggle_ai(self, player_index):
-        # Toggle the AI control for the selected player
-        is_ai = self.ai_vars[player_index].get()
-        self.game.players[player_index].is_ai = is_ai
-        logger.info(f"Player {player_index+1} AI status changed to {is_ai}")
 
     def create_inventory_button(self, player_name, player_index):
         fg_color = "black" if player_index in [0, 2] else "white"
@@ -614,12 +601,14 @@ class NovaLunaGUI:
 
 
     def update_deal_button_state(self):
-        # Enable/Disable the deal button based on the number of cards on the board
+        if not self.user_controls_enabled:
+            self.deal_button.config(state=tk.DISABLED)
         cards_on_board = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
-        if cards_on_board > 3 or len(self.game.deck) == 0:
+        if cards_on_board >= 3 or len(self.game.deck) == 0:
             self.deal_button.config(state=tk.DISABLED)
         else:
             self.deal_button.config(state=tk.NORMAL)
+
 
     def update_card_count(self):
         # Update the text in the card-shaped rectangle
@@ -698,7 +687,7 @@ class NovaLunaGUI:
     def deal_cards(self):
         # Manually refill the card board when "Deal" is clicked
         cards_on_board = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
-        if cards_on_board <= 3 and self.game.deck:
+        if cards_on_board < 3 and self.game.deck:
             for i in range(len(self.game.card_board)):
                 if self.game.card_board[i] is None and self.game.deck:
                     self.game.card_board[i] = self.game.deck.pop()
@@ -880,17 +869,9 @@ class NovaLunaGUI:
 
     def disable_user_controls(self):
         self.user_controls_enabled = False
-        # Disable the Deal button
-        self.deal_button.config(state=tk.DISABLED)
-        # Disable AI toggle checkbuttons if needed
-        # Disable other controls as necessary
 
     def enable_user_controls(self):
         self.user_controls_enabled = True
-        # Enable the Deal button
-        self.deal_button.config(state=tk.NORMAL)
-        # Enable AI toggle checkbuttons if needed
-        # Enable other controls as necessary
 
     def show_thinking_message(self):
         # Display a message or overlay indicating the AI is thinking

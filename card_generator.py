@@ -1,5 +1,3 @@
-# card_generator.py
-
 from Card import Card
 import random
 from Token import get_token_with_colors

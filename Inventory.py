@@ -1,9 +1,7 @@
-# Inventory.py
-
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)  # Default level is INFO
+# logging konfiguráció
+logging.basicConfig(level=logging.INFO)  # Default szint az INFO
 logger = logging.getLogger(__name__)
 class Inventory:
     # Minden playernek megvan a játék inventoryja. itt tároljuk a kártyáikat

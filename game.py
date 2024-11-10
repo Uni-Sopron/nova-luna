@@ -33,7 +33,7 @@ class Game:
         # GUI beállítása
         self.gui = gui
 
-    # Add these methods to exclude GUI from deepcopy:
+    # GUI elkülönítése deepcopy-tol:
     def __getstate__(self):
         """Prepare the state for pickling by removing non-picklable attributes."""
         state = self.__dict__.copy()
@@ -44,7 +44,7 @@ class Game:
     def __setstate__(self, state):
         """Restore the state after unpickling."""
         self.__dict__.update(state)
-        self.gui = None  # Re-initialize GUI reference to None
+        self.gui = None  # Újra inicializálja a GUI-referenciát None értékre
 
     def next_round(self):
         # Körök lekezelése
@@ -69,7 +69,7 @@ class Game:
             self.gui.update_info()
 
     def move_player(self, player, card):
-        # Move player based on card movement
+        # Játékos mozgatása kártya mozgás érték alapján
         if self.is_game_over():
             self.end_game()
             return
@@ -77,13 +77,13 @@ class Game:
         current_position = self.player_positions[player.name]
         new_position = (current_position + movement) % len(self.board)
 
-        # Remove player from current position
+        # Játékos eltávolítása a jelenlegi poziciójárol
         self.board[current_position].remove(player)
 
-        # Add player to the new position at the end of the list
+        # Játékos hozzá adása az új pozíciójához
         self.board[new_position].append(player)
 
-        # Update the player's position
+        # Játékos pozicíojának a frissitése
         self.player_positions[player.name] = new_position
         player.add_movement(movement)
         self.last_positions.append((player.name, new_position))
@@ -118,7 +118,7 @@ class Game:
         self.check_end_game()
 
     def get_remaining_cards(self):
-        # Return the number of remaining cards in the deck
+        # Megadja hogy mennyi kártya maradt a pakliban
         return len(self.deck)
 
     def draw(self, player, card_position):
@@ -177,20 +177,20 @@ class Game:
         if self.gui:
             self.gui.show_end_game_window(scores)
         else:
-            # Fallback to logging if GUI is not available
+            # Loggolás ha nem elérhető GUI
             for name, score in scores:
                 logger.info(f"{name}: {score}")
 
     def ai_play_turn(self):
         current_player = self.players[self.current_player_index]
         if self.gui:
-            # Start AI computation in a separate thread
+            # Külön szálban kezd MI számítást
             ai_thread = threading.Thread(target=self.gui.handle_ai_turn, args=(current_player,))
             ai_thread.start()
         else:
-            # Non-GUI version remains the same
+            # GUI-mentes verzió változatlan
 
-            move = get_ai_move(self, current_player, depth=2)  # Adjust depth as needed
+            move = get_ai_move(self, current_player, depth=2)  # Mélység álítható hogy hány körre számoljon előre az MI
             if move:
                 self.apply_move(current_player, move)
                 self.turn_order.append(current_player.name)
@@ -207,11 +207,22 @@ class Game:
         player.inventory.add_card(card, x, y)
         self.card_board[card_position] = None
         self.move_player(player, card)
+
+        # Hold jelző eltávlolíttása a jelenlegi poziciojáról
+        for i in range(len(self.card_board)):
+            if self.card_board[i] == self.moon_marker:
+                self.card_board[i] = None
+                break
+
+        # Hold jelző elhelyezése az új pozícioján
         self.moon_marker_position = card_position
-        if self.get_number_of_cards_on_board() <= 3:
+        self.card_board[card_position] = self.moon_marker
+
+        if self.get_number_of_cards_on_board() < 3:
             self.deal()
         self.check_inventory(player)
         self.check_end_game()
+
 
 
     def evaluate_placement(self, player, card, x, y):
