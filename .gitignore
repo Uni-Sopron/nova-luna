@@ -1,2 +1,6 @@
 # Ignore Python cache directories
 __pycache__/
+node_modules/
+simulations.csv
+thinking_times.csv
+launch.json

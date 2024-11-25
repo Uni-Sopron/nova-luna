@@ -10,9 +10,9 @@ print(token.blue)   # Output: 1
 print(token.yellow) # Output: None """
 
 
-# Kártyák kilistázása, 3 token kártyánként maximum(igen ezt egy jó idő volt bepötyögni)
+# A list of all the card data in the game
 CARD_DATA = [
-    {"color": "red", "movement": 1, "tokens": []}, # Az 1 lépéses kártyáknak nincs küldetés tokenje
+    {"color": "red", "movement": 1, "tokens": []}, # 1 cost cards have no tokens
     {"color": "red", "movement": 2, "tokens": [get_token_with_colors(red_count=4)]},
     {"color": "red", "movement": 2, "tokens": [get_token_with_colors(red_count=4)]},
     {"color": "red", "movement": 3, "tokens": [get_token_with_colors(red_count=1, green_count=1, blue_count=1)]},

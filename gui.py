@@ -5,10 +5,11 @@ from ai import get_ai_move
 import threading
 import queue
 import logging
+import csv
 
-# logging konfigurálása
+# Configure logging
 logging.basicConfig(
-    level=logging.INFO,  # Default szint az INFO
+    level=logging.WARNING,  # Default level for logging in INFO
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -20,14 +21,14 @@ class NovaLunaGUI:
         self.initialize_window.title("Game Setup")
         self.ai_vars = []
         self.num_players_var = tk.IntVar(value=4)
-        self.goal_var = tk.IntVar(value=20)
+        self.goal_var = tk.IntVar(value=10)
         self.fastmode_var = tk.BooleanVar(value=True)  # Variable to store Fastmode status
         self.user_controls_enabled = True
         self.create_initialize_window()
 
     def create_initialize_window(self):
         # Create the initialization window
-        self.initialize_window.geometry("400x400")  # Set a wider default size
+        self.initialize_window.geometry("400x500")  # Adjust the size to accommodate new widgets
 
         tk.Label(self.initialize_window, text="Number of Players:").pack(pady=5)
         num_players_spinbox = tk.Spinbox(
@@ -41,7 +42,6 @@ class NovaLunaGUI:
         num_players_spinbox.pack(pady=5)
 
         tk.Label(self.initialize_window, text="Goal:").pack(pady=5)
-        # Replace the Entry widget with a Scale widget for selecting the goal
         goal_slider = tk.Scale(
             self.initialize_window,
             from_=1,
@@ -51,13 +51,14 @@ class NovaLunaGUI:
         )
         goal_slider.pack(pady=5)
 
+        # AI Personality Selection
         ai_frame = tk.Frame(self.initialize_window)
         ai_frame.pack(pady=10)
 
         tk.Label(ai_frame, text="AI Personality:").grid(row=0, column=0, padx=10)
 
         # Define the AI personality options
-        ai_personality_options = ["Human", "Balanced", "Power", "Combo", "Greedy"]
+        ai_personality_options = ["Human", "Balanced", "Power", "Combo", "Greedy", "Random"]
         self.ai_personality_vars = []
 
         for i in range(4):
@@ -68,7 +69,8 @@ class NovaLunaGUI:
             option_menu = tk.OptionMenu(
                 ai_frame,
                 var,
-                *ai_personality_options
+                *ai_personality_options,
+                command=lambda value, i=i: self.check_simulation_toggle()
             )
             option_menu.grid(row=i + 1, column=1, padx=5, sticky='w')
             # Disable the OptionMenu if the player is not in the game
@@ -83,16 +85,35 @@ class NovaLunaGUI:
                 else:
                     option_menu.config(state=tk.DISABLED)
                     self.ai_personality_vars[i].set("Human")
+            self.check_simulation_toggle()  # Update simulation toggle whenever number of players changes
 
         self.num_players_var.trace("w", update_ai_personality_state)
 
+        # Simulation Mode Checkbox (Disabled by default)
+        self.simulation_var = tk.BooleanVar(value=False)
+        self.simulation_check = tk.Checkbutton(
+            self.initialize_window,
+            text="Simulation Mode",
+            variable=self.simulation_var,
+            command=self.on_simulation_toggle,
+            state=tk.DISABLED  # Disabled by default
+        )
+        self.simulation_check.pack(pady=10)
+
+        # Number of Simulations Input (Disabled initially)
+        self.num_simulations_var = tk.IntVar(value=1)
+        self.num_simulations_label = tk.Label(self.initialize_window, text="Number of Simulations:")
+        self.num_simulations_entry = tk.Entry(self.initialize_window, textvariable=self.num_simulations_var, state='disabled')
+        self.num_simulations_label.pack(pady=5)
+        self.num_simulations_entry.pack(pady=5)
+
         # Fastmode Checkbox
-        fastmode_check = tk.Checkbutton(
+        self.fastmode_check = tk.Checkbutton(
             self.initialize_window,
             text="Fastmode",
             variable=self.fastmode_var
         )
-        fastmode_check.pack(pady=10)
+        self.fastmode_check.pack(pady=10)
 
         start_button = tk.Button(self.initialize_window, text="Start", command=self.start_game)
         start_button.pack(pady=10)
@@ -100,6 +121,8 @@ class NovaLunaGUI:
     def start_game(self):
         num_players = self.num_players_var.get()
         goal = self.goal_var.get()
+        simulation_mode = self.simulation_var.get()
+        num_simulations = self.num_simulations_var.get()
 
         self.game = Game(num_players, goal)
 
@@ -113,10 +136,15 @@ class NovaLunaGUI:
                 self.game.players[i].ai_personality = None
 
         self.initialize_window.destroy()  # Destroy the setup window
-        self.initialize_game()
+
+        if simulation_mode:
+            # Start simulations
+            self.run_simulations(num_simulations, goal)
+        else:
+            self.initialize_game()
 
     def initialize_game(self):
-        # Create the main game window now
+        # Create the main game window
         self.root = tk.Tk()
         self.root.title("Nova Luna")
         
@@ -124,7 +152,7 @@ class NovaLunaGUI:
         self.selected_card_position = None
         self.available_positions = []
         self.inventory_window = None
-        self.all_players_moved = False  # Initialize this attribute
+        self.all_players_moved = False  # Check if everyone took their first turn
 
         self.create_widgets()
         self.update_board()
@@ -171,20 +199,20 @@ class NovaLunaGUI:
         self.scores_frame = tk.Frame(self.turn_and_score_frame)
         self.scores_frame.pack(side=tk.LEFT)
 
-        # Initial empty labels for scores, we'll update them later
+        # Initial empty labels for scores
         self.score_labels = []
         for player in self.game.players:
             player_label = tk.Label(self.scores_frame, text="")
             player_label.pack(anchor='w', pady=2)
             self.score_labels.append(player_label)
 
-        # Card shape to display remaining cards
+        # Rectangular Card shape to display remaining cards
         self.card_canvas = tk.Canvas(self.info_frame, width=100, height=150)
         self.card_canvas.pack(side=tk.RIGHT, padx=20)
         self.card_rectangle = self.card_canvas.create_rectangle(10, 10, 90, 140, outline="black", width=2)
         self.card_text = self.card_canvas.create_text(50, 75, text=str(self.game.get_remaining_cards()), font=("Arial", 20))
 
-        # Add the "Deal" button next to the card size display
+        # "Deal" button next to the card size display
         self.deal_button = tk.Button(self.info_frame, text="Deal", command=self.deal_cards)
         self.deal_button.pack(side=tk.RIGHT, padx=5)
         
@@ -200,7 +228,7 @@ class NovaLunaGUI:
         self.picked_card_canvas = tk.Canvas(self.picked_card_frame, width=100, height=150)
         self.picked_card_canvas.pack(side=tk.TOP)
 
-        # Create a frame to hold both inventory buttons and AI toggle controls
+        # Frame to hold both inventory buttons and AI toggle controls
         control_frame = tk.Frame(self.root)
         control_frame.pack(pady=10, side=tk.TOP, anchor='w')
 
@@ -216,7 +244,7 @@ class NovaLunaGUI:
         fg_color = "black" if player_index in [0, 2] else "white"
         button = tk.Button(
             self.root,
-            text=f"{player_name}",  # Just the player's name
+            text=f"{player_name}",  # Player's name for labeling
             command=lambda: self.open_inventory_window(player_index),
             bg=self.game.players[player_index].color,
             fg=fg_color,
@@ -232,7 +260,7 @@ class NovaLunaGUI:
         self.draw_player_board()
         self.draw_card_board()
         self.update_card_count()  # Update the remaining cards count
-        self.update_info() # Update player info, including scores
+        self.update_info() # Update player info
         self.canvas.update()
 
     def draw_player_board(self):
@@ -278,7 +306,7 @@ class NovaLunaGUI:
 
 
     def draw_card_board(self):
-        # Kártya tábla rajzolása
+        # Draw the card board
         size = 80
         margin = 5
         for i in range(len(self.game.card_board)):
@@ -308,7 +336,7 @@ class NovaLunaGUI:
                 self.canvas.tag_bind(self.canvas.create_rectangle(x0, y0, x1, y1, outline=''), '<Button-1>', lambda event, i=i: self.on_card_click(i))
 
     def draw_token(self, canvas, x, y, token):
-        # Tokenek rajzolása
+        # Draw the tokens
         colors = []
         if token.red:
             colors.extend(['red'] * token.red)
@@ -348,6 +376,9 @@ class NovaLunaGUI:
 
             # Display the picked card
             self.display_picked_card(self.selected_card)
+
+            # Disable the Deal button after a player selects a card
+            self.deal_button.config(state=tk.DISABLED)
 
             if self.is_first_card():
                 self.auto_place_first_card()
@@ -417,7 +448,7 @@ class NovaLunaGUI:
         self.center_inventory_view(self.inventory_canvas)
 
     def center_inventory_view(self, inventory_canvas):
-        # Inventory nézet igazítása
+        # Center the Inventory view
         self.root.update_idletasks()
         bbox = inventory_canvas.bbox("all")
         if bbox is not None:
@@ -439,7 +470,7 @@ class NovaLunaGUI:
         else:
             current_player = self.game.players[player_index]
         
-        # Use the same size for inventory cards as on the card board
+        # Use the same size for inventory cards as on the card board for consistency
         size = 65  # Same size as used on the card board
         margin = 5
 
@@ -499,7 +530,7 @@ class NovaLunaGUI:
             inventory_canvas.create_rectangle(x0, y0, x1, y1, outline='orange', width=6)
 
     def on_inventory_click(self, grid_position, inventory_canvas):
-        # Inventory-n belül kattintás lekezelése
+        # Handle a click inside a player's inventory
         if not self.user_controls_enabled:
             return
         if self.selected_card is None:
@@ -515,7 +546,7 @@ class NovaLunaGUI:
         x, y = grid_position
         if self.is_valid_placement(player, x, y):
             try:
-                player.inventory.add_card(self.selected_card, x, y)
+                player.inventory.add_card(self.selected_card, x, y, player.name)
                 self.game.moon_marker_position = self.selected_card_position
                 for i in range(len(self.game.card_board)):
                     if self.game.card_board[i] == self.game.moon_marker:
@@ -564,9 +595,6 @@ class NovaLunaGUI:
         for widget in self.scores_frame.winfo_children():
             widget.destroy()
 
-        # Always clear the picked card display
-        self.picked_card_canvas.delete("all")
-
         # Update or create the player's token as a small oval next to the turn text
         current_player = self.game.players[self.game.current_player_index]
 
@@ -593,7 +621,7 @@ class NovaLunaGUI:
             player_label.pack(side=tk.LEFT)
 
         self.card_canvas.pack(side=tk.RIGHT, padx=20)
-        # Ensure the "Deal" button state is updated at the start of each turn
+        # Update the "Deal" button state at the start of each turn
         self.update_deal_button_state()
 
         # Automatically open the current player's inventory
@@ -615,7 +643,7 @@ class NovaLunaGUI:
         self.card_canvas.itemconfig(self.card_text, text=str(self.game.get_remaining_cards()))
 
     def is_valid_placement(self, player, x, y):
-        # Érvényes kártya letevés ellenörzése
+        # Check if the attempted inventory placement is a valid move
         adjacent_positions = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         for ax, ay in adjacent_positions:
             if player.inventory.get_card(ax, ay) is not None:
@@ -625,17 +653,17 @@ class NovaLunaGUI:
         return False
 
     def is_first_card(self):
-        # Első kártyája-e
+        # Checks if its the first card picked for the player
         current_player = self.game.players[self.game.current_player_index]
         return len(current_player.inventory.get_all_cards()) == 0
 
     def auto_place_first_card(self):
-        # Első kártya automatikus lehelyezése
+        # Place the first card picked automatically
         current_player = self.game.players[self.game.current_player_index]
         if len(current_player.inventory.get_all_cards()) == 0:
             center_x = current_player.inventory.center_x
             center_y = current_player.inventory.center_y
-            current_player.inventory.add_card(self.selected_card, center_x, center_y)
+            current_player.inventory.add_card(self.selected_card, center_x, center_y, current_player.name)
             self.game.moon_marker_position = self.selected_card_position
             for i in range(len(self.game.card_board)):
                 if self.game.card_board[i] == self.game.moon_marker:
@@ -657,7 +685,7 @@ class NovaLunaGUI:
                 self.show_end_game_window()
 
     def get_available_card_positions(self):
-        # Lehetséges üres kártyahelyek megkeresése
+        # Finds all valid card's positions
         current_position = self.game.moon_marker_position
         positions = []
         count = 0
@@ -675,7 +703,7 @@ class NovaLunaGUI:
         return positions
 
     def refill_card_board_if_needed(self):
-        # Kártya tábla újraosztása
+        # Refills the card board if needed/possible
         cards_on_board = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
         if cards_on_board == 0 and self.game.deck:
             for i in range(len(self.game.card_board)):
@@ -695,16 +723,21 @@ class NovaLunaGUI:
         self.update_deal_button_state()  # Update the deal button state after dealing
 
     def show_end_game_window(self, scores):
-        # Display the game over window
+        """Display the game over window."""
+        if hasattr(self, 'after_id') and self.after_id:
+            self.root.after_cancel(self.after_id)  # Cancel the scheduled after call
+            self.after_id = None
+
         if self.inventory_window:
             self.inventory_window.destroy()
-        self.root.destroy()
+        if self.root:
+            self.root.destroy()
 
         end_game_window = tk.Tk()
         end_game_window.title("Game Over")
 
         score_text = "Game Over\n\n"
-        for name, score in scores:
+        for name, score in scores.items():
             score_text += f"{name}: {score}\n"
 
         score_label = tk.Label(end_game_window, text=score_text, font=("Helvetica", 16))
@@ -732,25 +765,38 @@ class NovaLunaGUI:
         self.disable_user_controls()
         self.show_thinking_message()
 
+        # **Safety Measure**
+        # Check if there are 2 or fewer cards on the card board
+        cards_on_board = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
+        if cards_on_board <= 2 and self.game.deck:
+            self.deal_cards()
+
         def ai_task():
             # Perform the AI computation in a separate thread
-            move = get_ai_move(self.game, current_player, depth=3)  # Adjust depth as needed
+            move = get_ai_move(self.game, current_player, depth=3)  # Adjust depth as needed, 3 for default
             # Put the result into the queue
             self.ai_queue.put((current_player, move))
 
         # Start the AI computation in a separate thread
         threading.Thread(target=ai_task).start()
 
+
     def process_ai_queue(self):
+        if self.game.simulation_mode or self.game.game_over:  # Stop processing if the game is over
+            return
         try:
-            while True:
-                # Get the AI move from the queue without blocking
-                current_player, move = self.ai_queue.get_nowait()
-                self.process_ai_move(current_player, move)
+            current_player, move = self.ai_queue.get_nowait()
+            self.process_ai_move(current_player, move)
         except queue.Empty:
             pass
-        # Schedule the next check of the queue
-        self.root.after(100, self.process_ai_queue)
+        if self.root:
+            # Store the after ID to allow cancellation later
+            self.after_id = self.root.after(100, self.process_ai_queue)
+
+    def cancel_after_calls(self):
+        if hasattr(self, 'after_id') and self.after_id:
+            self.root.after_cancel(self.after_id)
+            self.after_id = None
 
     def process_ai_move(self, current_player, move):
         # Hide the thinking message
@@ -858,7 +904,7 @@ class NovaLunaGUI:
             canvas.create_oval(x + col * 10, y + row * 10, x + 10 + col * 10, y + 10 + row * 10, fill=color)
 
     def show_next_button(self, command):
-        # Create a Next button that advances the AI's turn
+        # Create a Next button for advancing the AI's turn
         self.next_button = tk.Button(self.info_frame, text="Next", command=command)
         self.next_button.pack(side=tk.TOP, pady=10)
 
@@ -874,7 +920,7 @@ class NovaLunaGUI:
         self.user_controls_enabled = True
 
     def show_thinking_message(self):
-        # Display a message or overlay indicating the AI is thinking
+        # Display a message indicating the AI is thinking
         self.thinking_label = tk.Label(self.root, text="AI is thinking...", font=("Arial", 16))
         self.thinking_label.pack(side=tk.TOP, pady=10)
 
@@ -886,6 +932,141 @@ class NovaLunaGUI:
         next_player = self.game.players[self.game.current_player_index]
         if not next_player.is_ai:
             self.enable_user_controls()
+
+    def check_simulation_toggle(self):
+        # Enable the Simulation Mode checkbox only if all players are AI
+        num_players = self.num_players_var.get()
+        all_ai = all(self.ai_personality_vars[i].get() != "Human" for i in range(num_players))
+        if all_ai:
+            self.simulation_check.config(state=tk.NORMAL)
+        else:
+            self.simulation_check.config(state=tk.DISABLED)
+            self.simulation_var.set(False)
+            self.on_simulation_toggle()  # The number of simulations input is disabled by default
+
+    def on_simulation_toggle(self):
+        if self.simulation_var.get():
+            # Enable number of simulations input
+            self.num_simulations_entry.config(state='normal')
+            self.num_simulations_label.config(fg='black')
+            # Disable Fastmode during simulation(it's fastmode either way during simulation)
+            self.fastmode_check.config(state=tk.DISABLED)
+        else:
+            # Disable number of simulations input
+            self.num_simulations_entry.config(state='disabled')
+            self.num_simulations_label.config(fg='grey')
+            # Re-enable Fastmode
+            self.fastmode_check.config(state=tk.NORMAL)
+
+    def run_simulations(self, num_simulations, goal):
+        per_player_data = []
+        per_turn_data = []  # List to collect per-turn data from all games
+
+        for i in range(num_simulations):
+            print(f"Running simulation {i+1}/{num_simulations}")
+            game = Game(num_players=self.num_players_var.get(), goal=goal, gui=None, simulation_mode=True, game_number=i+1)
+            # Set AI personalities
+            for j, player in enumerate(game.players):
+                ai_personality = self.ai_personality_vars[j].get()
+                player.is_ai = True
+                player.ai_personality = ai_personality
+            # Run the simulation
+            game.simulate_game()
+            # Collect per-player data
+            winner_name = game.statistics.get('winner', 'No Winner')
+            winner_ai_type = game.statistics.get('winner_ai_type', 'Unknown')
+            game_length = game.statistics.get('game_length', 0)
+            for player in game.players:
+                number_of_turns = len(game.statistics['turn_times'][player.name])
+                final_score = player.score
+                average_score_per_turn = final_score / number_of_turns if number_of_turns > 0 else 0
+                total_move_cost = player.total_movement
+                average_move_cost = (
+                    total_move_cost / number_of_turns if number_of_turns > 0 else 0
+                )
+
+
+                per_player_data.append({
+                    'game_number': i + 1,
+                    'winner_name': winner_name,
+                    'winner_ai_type': winner_ai_type,
+                    'game_length': game_length,
+                    'player_name': player.name,
+                    'player_ai_type': player.ai_personality,
+                    'average_score_per_turn': round(average_score_per_turn, 2),
+                    'average_move_cost': round(average_move_cost, 2)
+                })
+            # Collect per-turn data
+            per_turn_data.extend(game.statistics['per_turn_data'])
+
+        # Save data to CSV files
+        self.save_per_player_data_to_csv(per_player_data)
+        self.save_per_turn_data_to_csv(per_turn_data)
+
+        # Display a message when simulations are complete
+        print("Simulations complete. Data saved to simulations.csv and thinking_times.csv.")
+
+        # Properly close the application
+        if self.root:
+            self.root.quit()
+            self.root.destroy()
+        else:
+            self.initialize_window.quit()
+
+    def save_per_player_data_to_csv(self, data):
+        if not data:
+            return
+        keys = ['game_number', 'winner_name', 'winner_ai_type', 'game_length', 'player_name', 'player_ai_type', 'average_score_per_turn', 'average_move_cost']
+        with open('simulations.csv', 'w', newline='') as output_file:
+            dict_writer = csv.DictWriter(output_file, fieldnames=keys)
+            dict_writer.writeheader()
+            for row in data:
+                csv_row = {
+                    'game_number': row['game_number'],
+                    'winner_name': row['winner_name'],
+                    'winner_ai_type': row['winner_ai_type'],
+                    'game_length': row['game_length'],
+                    'player_name': row['player_name'],
+                    'player_ai_type': row['player_ai_type'],
+                    'average_score_per_turn': "{:.2f}".format(row['average_score_per_turn']),
+                    'average_move_cost': "{:.2f}".format(row['average_move_cost']),
+                }
+                dict_writer.writerow(csv_row)
+
+    def save_data_to_csv(self, data):
+        if not data:
+            return
+        # Define the fields explicitly
+        keys = ['game_number', 'winner', 'average_score_per_turn', 'game_length', 'average_move_cost']
+        with open('simulations.csv', 'w', newline='') as output_file:
+            dict_writer = csv.DictWriter(output_file, fieldnames=keys)
+            dict_writer.writeheader()
+            for game_data in data:
+                csv_row = {
+                    'game_number': game_data['game_number'],
+                    'winner': str(game_data['winner']),  # Convert winner to string explicitly
+                    'average_score_per_turn': f"{game_data.get('average_score_per_turn', 0):.2f}",  # Format to 2 decimals
+                    'game_length': game_data['game_length'],
+                    'average_move_cost': f"{game_data.get('average_move_cost', 0):.2f}",  # Format to 2 decimals
+                }
+                dict_writer.writerow(csv_row)
+
+    def save_per_turn_data_to_csv(self, data):
+        if not data:
+            return
+        keys = data[0].keys()
+        with open('thinking_times.csv', 'w', newline='') as output_file:
+            dict_writer = csv.DictWriter(output_file, fieldnames=keys)
+            dict_writer.writeheader()
+            for row in data:
+                # Format the turn time
+                turn_time = float(row['turn_time'])
+                if turn_time < 1:
+                    row['turn_time'] = "{:.2f}".format(turn_time)
+                else:
+                    row['turn_time'] = "{:.0f}".format(turn_time)
+                dict_writer.writerow(row)
+
 
     def run(self):
         if self.root:
