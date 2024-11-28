@@ -1,116 +1,175 @@
-```mermaid
----
-title: Nova Luna
----
 classDiagram
+    %% Classes
+    class Game {
+        - List~Player~ players
+        - List~Card~ deck
+        - int goal
+        - int current_player_index
+        - List~List~ board
+        - List~Card~ card_board
+        - Dict~str, int~ player_positions
+        - str moon_marker
+        - int moon_marker_position
+        - List~Tuple~ last_positions
+        - List~str~ turn_order
+        - Dict~str, int~ card_move_costs
+        - NovaLunaGUI gui
+        - bool simulation_mode
+        - bool in_simulation
+        - int turn_number
+        - int game_number
+        - bool game_over
+        - Dict~str, Any~ statistics
+        + __init__(int num_players, int goal=10, NovaLunaGUI gui=None, bool simulation_mode=False, int game_number=1)
+        + set_gui(NovaLunaGUI gui)
+        + next_round()
+        + move_player(Player player, Card card)
+        + check_end_game()
+        + is_game_over() bool
+        + end_game()
+        + deal()
+        + get_remaining_cards() int
+        + get_number_of_cards_on_board() int
+        + get_available_card_positions() List~int~
+        + find_furthest_back_player() Player
+        + show_end_game_window(Dict~str, int~ scores)
+        + ai_play_turn()
+        + apply_move(Player player, Tuple~int, Tuple~int~ move)
+        + evaluate_placement(Player player, Card card, int x, int y) int
+        + is_valid_placement(Player player, int x, int y) bool
+        + check_inventory(Player player)
+        + check_token_completion(Player player, Card card, Token token, int x, int y)
+        + count_color_chain(Player player, int x, int y, str color, Tuple~int, int exclude_position)
+        + simulate_game()
+    }
 
-class Game {
-    players: Player[4]
-    deck: Card[]
-    current_player_index: int
-    board: list[list[Player]]
-    card_board: list[Card|None]
-    player_positions: dict[str, int]
-    moon_marker: str
-    moon_marker_position: int
-    last_positions: list[tuple[str, int]]
-    turn_order: list[str]
-    gui: NovaLunaGUI
-    set_gui(gui: NovaLunaGUI)
-    next_round()
-    move_player(player: Player, card: Card)
-    check_end_game()
-    is_game_over() bool
-    end_game()
-    deal()
-    draw(player: Player, card_position: int)
-    get_number_of_cards_on_board() int
-    get_available_card_positions() list[int]
-    find_furthest_back_player() Player
-    show_end_game_window(scores: list[tuple[str, int]])
-    ai_play_turn()
-    evaluate_placement(player: Player, card: Card, x: int, y: int) int
-    is_valid_placement(player: Player, x: int, y: int) bool
-    check_inventory(player: Player)
-    check_token_completion(player: Player, card: Card, token: Token, x: int, y: int)
-}
+    class NovaLunaGUI {
+        - Tk root
+        - Tk initialize_window
+        - List~Any~ ai_vars
+        - IntVar num_players_var
+        - IntVar goal_var
+        - BooleanVar fastmode_var
+        - BooleanVar user_controls_enabled
+        - Queue~Any~ ai_queue
+        + __init__()
+        + create_initialize_window()
+        + start_game()
+        + initialize_game()
+        + create_widgets()
+        + create_inventory_button(str player_name, int player_index) Button
+        + update_board()
+        + draw_player_board()
+        + get_player_positions(int num_players) List~Tuple~int, int~
+        + draw_card_board()
+        + draw_token(Canvas canvas, int x, int y, Token token)
+        + player_has_moved(Player player)
+        + on_card_click(int card_position)
+        + open_inventory_window(int player_index=None)
+        + center_inventory_view(Canvas inventory_canvas)
+        + draw_inventory(Frame inventory_frame, Canvas inventory_canvas, int player_index=None)
+        + on_inventory_click(Tuple~int, int y, Canvas inventory_canvas)
+        + update_inventory()
+        + update_info()
+        + update_deal_button_state()
+        + update_card_count()
+        + is_valid_placement(Player player, int x, int y) bool
+        + is_first_card() bool
+        + auto_place_first_card()
+        + get_available_card_positions() List~int~
+        + refill_card_board_if_needed()
+        + deal_cards()
+        + show_end_game_window(Dict~str, int~ scores)
+        + start_new_game(Window window)
+        + run()
+        + handle_ai_turn(Player current_player)
+        + process_ai_queue()
+        + cancel_after_calls()
+        + process_ai_move(Player current_player, Tuple~int, Tuple~int~ move)
+        + continue_ai_turn(Player current_player, Tuple~int, Tuple~int~ move)
+        + highlight_inventory_position(Player player, Tuple~int, int~ position)
+        + clear_ai_state()
+        + display_picked_card(Card card)
+        + show_next_button(Function command)
+        + hide_next_button()
+        + disable_user_controls()
+        + enable_user_controls()
+        + show_thinking_message()
+        + hide_thinking_message()
+        + check_and_enable_user_controls()
+        + check_simulation_toggle()
+        + on_simulation_toggle()
+        + run_simulations(int num_simulations, int goal)
+        + save_per_player_data_to_csv(List~Dict~str, Any~ data)
+        + save_data_to_csv(List~Dict~str, Any~ data)
+        + save_per_turn_data_to_csv(List~Dict~str, Any~ data)
+    }
 
-class Player {
-    name: str
-    color: str
-    inventory: Inventory
-    score: int
-    total_movement: int
-    is_ai: bool
-    add_movement(movement: int)
-}
-Game o-- "4" Player
+    class Player {
+        - str name
+        - str color
+        - Inventory inventory
+        - int score
+        - int total_movement
+        - int total_movement_at_turn_start
+        - bool is_ai
+        - str ai_personality
+        + __init__(str color, str player_name, int score=0, bool is_ai=False, str ai_personality="Balanced")
+        + add_movement(int movement)
+    }
 
-class Inventory {
-    grid: dict[tuple[int, int], Card]
-    center_x: int
-    center_y: int
-    add_card(card: Card, x: int, y: int)
-    get_card(x: int, y: int) Card|None
-    get_all_cards() list[tuple[Card, int, int]]
-    get_inventory_bounds() tuple[int, int, int, int]
-}
-Player o-- Inventory
+    class Inventory {
+        - Dict~Tuple~int, int~, Card~ grid
+        - int center_x
+        - int center_y
+        + __init__()
+        + add_card(Card card, int x, int y, str player_name=None)
+        + get_card(int x, int y) Card
+        + get_all_cards() List~Tuple~Card, int, int~
+        + get_inventory_bounds() Tuple~int, int, int, int~
+        + copy() Inventory
+    }
 
-class Card {
-    color: str
-    movement: int
-    tokens: list[Token]
-}
-Inventory o-- "*" Card
-Game o-- "*" Card
+    class Card {
+        - str color
+        - int movement
+        - List~Token~ tokens
+        + __init__(str color, int movement, List~Token~ tokens)
+        + is_complete() bool
+        + __str__() str
+        + __repr__() str
+    }
 
-class Token {
-    red: Optional[int]
-    green: Optional[int]
-    blue: Optional[int]
-    yellow: Optional[int]
-    is_completed: bool
-}
-Card o-- "*" Token
+    class Token {
+        - int red
+        - int green
+        - int blue
+        - int yellow
+        - bool is_completed
+        + __init__(int red=None, int green=None, int blue=None, int yellow=None, bool is_completed=False)
+    }
 
-class NovaLunaGUI {
-    root: Tk
-    game: Game
-    selected_card: Card|None
-    selected_card_position: int|None
-    available_positions: list[int]
-    inventory_window: Toplevel|None
-    canvas: Canvas
-    info_frame: Frame
-    player_turn_label: Label
-    score_label: Label
-    create_widgets()
-    update_board()
-    draw_player_board()
-    get_player_positions(num_players: int) list[tuple[int, int]]
-    draw_card_board()
-    draw_token(canvas: Canvas, x: int, y: int, token: Token)
-    on_card_click(card_position: int)
-    open_inventory_window(player_index: int|None)
-    center_inventory_view(inventory_canvas: Canvas)
-    draw_inventory(inventory_frame: Frame, inventory_canvas: Canvas, player_index: int|None)
-    on_inventory_click(grid_position: tuple[int, int], inventory_canvas: Canvas)
-    update_inventory()
-    update_inventory_display()
-    update_inventory_display_for_all()
-    is_valid_placement(player: Player, x: int, y: int) bool
-    is_first_card() bool
-    auto_place_first_card()
-    get_available_card_positions() list[int]
-    update_info()
-    check_inventory(player: Player)
-    check_token_completion(player: Player, card: Card, token: Token, x: int, y: int)
-    refill_card_board_if_needed()
-    show_end_game_window()
-    start_new_game(window: Toplevel)
-    run()
-}
-Game o-- NovaLunaGUI
+    class AI {
+        + get_ai_move(Game game, Player ai_player, int depth=3, List~Tuple~int, Tuple~int~ possible_moves=None) Tuple~int, Tuple~int~
+        + maxn(Game game, int depth, Player current_player) Dict~str, float~
+        + get_possible_moves(Game game, Player player) List~Tuple~int, Tuple~int~
+        + apply_move(Game game, Player player, Tuple~int, Tuple~int~ move)
+        + evaluate_game_state(Game game, Player ai_player) Dict~str, float~
+        + get_token_progress(Game game, Player player, Token token) int
+        + get_color_counts(Game game, Player player) Dict~str, int~
+        + get_consecutive_turns(Game game, Player player) int
+        + get_next_player(Game game, Player current_player) Player
+    }
 
-```
+    %% Relationships
+    Game "1" --> "*" Player : has
+    Player "1" --> "1" Inventory : owns
+    Inventory "1" --> "*" Card : contains
+    Card "1" --> "*" Token : has
+    Game "1" --> "*" Card : deck
+    NovaLunaGUI "1" --> "1" Game : interacts with
+    Game "1" --> "1" AI : uses
+    AI "1" --> "1" Game : operates on
+    AI "1" --> "1" Player : interacts with
+    AI "1" --> "1" Card : interacts with
+    AI "1" --> "1" Token : interacts with
