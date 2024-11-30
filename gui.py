@@ -5,6 +5,9 @@ import threading
 import queue
 import logging
 import csv
+import multiprocessing
+from functools import partial
+import gc
 
 # Configure logging
 logging.basicConfig(
@@ -958,45 +961,26 @@ class NovaLunaGUI:
             self.fastmode_check.config(state=tk.NORMAL)
 
     def run_simulations(self, num_simulations, goal):
+        """
+        Run multiple game simulations in parallel, collecting results.
+        """
         per_player_data = []
-        per_turn_data = []  # List to collect per-turn data from all games
+        per_turn_data = []
 
-        for i in range(num_simulations):
-            print(f"Running simulation {i+1}/{num_simulations}")
-            game = Game(num_players=self.num_players_var.get(), goal=goal, gui=None, simulation_mode=True, game_number=i+1)
-            # Set AI personalities
-            for j, player in enumerate(game.players):
-                ai_personality = self.ai_personality_vars[j].get()
-                player.is_ai = True
-                player.ai_personality = ai_personality
-            # Run the simulation
-            game.simulate_game()
-            # Collect per-player data
-            winner_name = game.statistics.get('winner', 'No Winner')
-            winner_ai_type = game.statistics.get('winner_ai_type', 'Unknown')
-            game_length = game.statistics.get('game_length', 0)
-            for player in game.players:
-                number_of_turns = len(game.statistics['turn_times'][player.name])
-                final_score = player.score
-                average_score_per_turn = final_score / number_of_turns if number_of_turns > 0 else 0
-                total_move_cost = player.total_movement
-                average_move_cost = (
-                    total_move_cost / number_of_turns if number_of_turns > 0 else 0
-                )
+        # Prepare simulation parameters
+        num_players = self.num_players_var.get()
+        ai_personalities = [self.ai_personality_vars[i].get() for i in range(num_players)]
 
+        # Prepare multiprocessing pool
+        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+            # Use partial to bind fixed parameters to the simulation function
+            simulation_func = partial(run_single_simulation, num_players=num_players, goal=goal, ai_personalities=ai_personalities)
 
-                per_player_data.append({
-                    'game_number': i + 1,
-                    'winner_name': winner_name,
-                    'winner_ai_type': winner_ai_type,
-                    'game_length': game_length,
-                    'player_name': player.name,
-                    'player_ai_type': player.ai_personality,
-                    'average_score_per_turn': round(average_score_per_turn, 2),
-                    'average_move_cost': round(average_move_cost, 2)
-                })
-            # Collect per-turn data
-            per_turn_data.extend(game.statistics['per_turn_data'])
+            # Run simulations in parallel
+            for i, (player_data, turn_data) in enumerate(pool.imap_unordered(simulation_func, range(1, num_simulations + 1)), 1):
+                per_player_data.extend(player_data)
+                per_turn_data.extend(turn_data)
+                print(f"Completed simulation {i}/{num_simulations}")
 
         # Save data to CSV files
         self.save_per_player_data_to_csv(per_player_data)
@@ -1004,13 +988,6 @@ class NovaLunaGUI:
 
         # Display a message when simulations are complete
         print("Simulations complete. Data saved to simulations.csv and thinking_times.csv.")
-
-        # Properly close the application
-        if self.root:
-            self.root.quit()
-            self.root.destroy()
-        else:
-            self.initialize_window.quit()
 
     def save_per_player_data_to_csv(self, data):
         if not data:
@@ -1072,3 +1049,51 @@ class NovaLunaGUI:
             self.root.mainloop()
         else:
             self.initialize_window.mainloop()
+
+
+
+def run_single_simulation(simulation_id, num_players, goal, ai_personalities):
+    """
+    Run a single simulation and return its data.
+    """
+    try:
+        # Initialize game
+        game = Game(num_players=num_players, goal=goal, gui=None, simulation_mode=True, game_number=simulation_id)
+        for j, player in enumerate(game.players):
+            player.is_ai = True
+            player.ai_personality = ai_personalities[j]
+
+        # Run the simulation
+        game.simulate_game()
+
+        # Collect per-player data
+        winner_name = game.statistics.get('winner', 'No Winner')
+        winner_ai_type = game.statistics.get('winner_ai_type', 'Unknown')
+        game_length = game.statistics.get('game_length', 0)
+        simulation_player_data = []
+        for player in game.players:
+            num_turns = len(game.statistics['turn_times'][player.name])
+            avg_score_per_turn = player.score / num_turns if num_turns > 0 else 0
+            avg_move_cost = (
+                sum(game.statistics['move_costs'][player.name]) / num_turns if num_turns > 0 else 0
+            )
+            simulation_player_data.append({
+                'game_number': simulation_id,
+                'player_name': player.name,
+                'player_ai_type': player.ai_personality,
+                'winner_name': winner_name,
+                'winner_ai_type': winner_ai_type,
+                'game_length': game_length,
+                'average_score_per_turn': round(avg_score_per_turn, 2),
+                'average_move_cost': round(avg_move_cost, 2)
+            })
+
+        # Collect per-turn data
+        simulation_turn_data = game.statistics['per_turn_data']
+
+        return simulation_player_data, simulation_turn_data
+
+    finally:
+        # Cleanup game instance
+        del game
+        gc.collect()

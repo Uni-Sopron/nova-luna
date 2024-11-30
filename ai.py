@@ -1,53 +1,102 @@
 import copy
 import logging
 import random
+import multiprocessing
 
-logger = logging.getLogger(__name__)
+def maxn_worker(args):
+    """Worker function for evaluating a move."""
+    game, move, depth, current_player = args
+    cloned_game = copy.deepcopy(game)
+    cloned_game.in_simulation = True  # Mark cloned game as simulation
+    cloned_current_player = next(p for p in cloned_game.players if p.name == current_player.name)
+    apply_move(cloned_game, cloned_current_player, move)
+    next_player = get_next_player(cloned_game, cloned_current_player)
+    child_values = maxn(cloned_game, depth - 1, next_player)
+    return move, child_values[current_player.name]
+
+def create_process_logger():
+    logger = logging.getLogger(f"Process-{multiprocessing.current_process().name}")
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler.setFormatter(formatter)
+
+    # Clear existing handlers
+    if logger.handlers:
+        logger.handlers = []
+
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)  # Default level; can be customized per process
+    return logger
+
+# Initialize the logger for multiprocessing
+def initialize_process_logger():
+    global process_logger
+    process_logger = create_process_logger()
 
 def get_ai_move(game, ai_player, depth=3, possible_moves=None):
-    # Save the original logging level
-    original_level = logging.getLogger().getEffectiveLevel()
+    if possible_moves is None:
+        possible_moves = get_possible_moves(game, ai_player)
 
-    # Set logging level to WARNING to suppress DEBUG and INFO messages during AI simulations
-    logging.getLogger().setLevel(logging.WARNING)
+    # Handle Random AI Personality
+    if ai_player.ai_personality == "Random":
+        if possible_moves:
+            return random.choice(possible_moves)
+        return None  # No possible moves
 
-    try:
-        if possible_moves is None:
-            possible_moves = get_possible_moves(game, ai_player)
+    # Use multiprocessing for AI computation only if not in simulation mode
+    if not game.simulation_mode:
+        with multiprocessing.Pool(
+            processes=multiprocessing.cpu_count(),
+            initializer=initialize_process_logger
+        ) as pool:
+            results = pool.map(
+                evaluate_move_multiprocess,
+                [(game, ai_player, move, depth) for move in possible_moves]
+            )
+        # Select the best move based on results
+        best_move = None
+        best_value = float('-inf')
+        for move, value in results:
+            if value > best_value:
+                best_value = value
+                best_move = move
+        return best_move
 
-        # Handle Random AI Personality
-        if ai_player.ai_personality == "Random":
-            if possible_moves:
-                # Select a random move from possible moves
-                best_move = random.choice(possible_moves)
-                return best_move
-            else:
-                return None  # No possible moves
-        else:
-            # Existing logic for other AI personalities
-            best_move = None
-            best_value = float('-inf')
+    # Sequential fallback for simulation mode
+    best_move = None
+    best_value = float('-inf')
+    for move in possible_moves:
+        cloned_game = copy.deepcopy(game)
+        cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)
+        apply_move(cloned_game, cloned_ai_player, move)
+        values = maxn(cloned_game, depth - 1, cloned_ai_player)
+        ai_value = values[cloned_ai_player.name]
+        if ai_value > best_value:
+            best_value = ai_value
+            best_move = move
+    return best_move
 
-            for move in possible_moves:
-                cloned_game = copy.deepcopy(game)
-                cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)
-                apply_move(cloned_game, cloned_ai_player, move)
-                values = maxn(cloned_game, depth - 1, cloned_ai_player)
-                ai_value = values[cloned_ai_player.name]
-                if ai_value > best_value:
-                    best_value = ai_value
-                    best_move = move
-            return best_move
-    finally:
-        # Restore the original logging level
-        logging.getLogger().setLevel(original_level)
+def evaluate_move_multiprocess(args):
+    """
+    Helper function for multiprocessing.
+    Evaluates a single move and returns the move and its value.
+    """
+    game, ai_player, move, depth = args
+    cloned_game = copy.deepcopy(game)
+    cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)
+    apply_move(cloned_game, cloned_ai_player, move)
+    values = maxn(cloned_game, depth - 1, cloned_ai_player)
+
+    # Log within this process using process-specific logger
+    process_logger.info(f"Evaluated move {move} with value {values[cloned_ai_player.name]}")
+
+    return move, values[cloned_ai_player.name]
 
 def maxn(game, depth, current_player):
     if depth == 0 or game.is_game_over():
         return evaluate_game_state(game, current_player)
-    
-    # Set simulation flag
-    game.in_simulation = True
 
     values = {player.name: float('-inf') for player in game.players}
     possible_moves = get_possible_moves(game, current_player)
@@ -57,6 +106,7 @@ def maxn(game, depth, current_player):
         next_player = get_next_player(game, current_player)
         return maxn(game, depth, next_player)
 
+    # Sequential fallback for depths other than root
     for move in possible_moves:
         cloned_game = copy.deepcopy(game)
         cloned_game.in_simulation = True  # Ensure cloned game is marked as simulation
@@ -66,9 +116,6 @@ def maxn(game, depth, current_player):
         child_values = maxn(cloned_game, depth - 1, next_player)
         if child_values[current_player.name] > values[current_player.name]:
             values = child_values
-
-    # Reset simulation flag
-    game.in_simulation = False
 
     return values
 
