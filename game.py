@@ -161,23 +161,6 @@ class Game:
         # Returns the amount of cards left in the deck
         return len(self.deck)
 
-    def draw(self, player, card_position):
-        # Draw a card from the board
-        available_positions = self.get_available_card_positions()
-        if card_position < 0 or card_position >= len(self.card_board):
-            raise IndexError("Position out of bounds")
-        if self.card_board[card_position] is None or card_position not in available_positions:
-            raise ValueError("Invalid position")
-
-        card = self.card_board[card_position]
-        player.inventory.add_card(card, random.randint(-5, 5), random.randint(-5, 5))
-        self.card_board[card_position] = None
-        self.move_player(player, card)
-        self.moon_marker_position = card_position
-        if self.get_number_of_cards_on_board() <= 3:
-            self.deal()
-        self.check_end_game()
-
     def get_number_of_cards_on_board(self):
         # Counts of number of active cards on the board
         return sum(1 for card in self.card_board if card is not None and card != self.moon_marker)

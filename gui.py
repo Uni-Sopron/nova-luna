@@ -1,5 +1,4 @@
 import tkinter as tk
-from tkinter import ttk
 from game import Game
 from ai import get_ai_move
 import threading
