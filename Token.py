@@ -1,13 +1,11 @@
-# Token.py
-
 class Token:
-    # A token class célja hogy indikátor legyen a kártyákon, mivel több színű lehet keverve 4 adatot tartalmaz: red, green, blue, yellow
+    # A token indicates a possible mission to acomplish to earn a score. Token can contain a max sum of 4 of the 4 colors. Cards contain up to 3 tokens.
     def __init__(self, red=None, green=None, blue=None, yellow=None, is_completed=False):
         self.red = red
         self.green = green
         self.blue = blue
         self.yellow = yellow
-        self.is_completed = is_completed  # Teljesült-e a token küldetés
+        self.is_completed = is_completed  # Is the token's mission completed already
 
 def get_token_with_colors(red_count=0, green_count=0, blue_count=0, yellow_count=0):
     token_dict = {
@@ -28,7 +26,7 @@ print(token.yellow) # Output: None """
 def generate_token_combinations():
     combinations = set()
 
-    # Egy színű tokenek generálása
+    # Generate possible tokens with single color missions
     for color in ['red', 'green', 'blue', 'yellow']:
         for i in range(1, 5):
             if i <= 4:
@@ -36,7 +34,7 @@ def generate_token_combinations():
                 token = Token(**token_dict)
                 combinations.add(tuple(sorted(token_dict.items())))
 
-    # Két színű tokenek generálása
+    # Generate possible tokens with dual color missions
     for color1 in ['red', 'green', 'blue', 'yellow']:
         for color2 in ['red', 'green', 'blue', 'yellow']:
             if color1 != color2:
@@ -47,7 +45,7 @@ def generate_token_combinations():
                             token = Token(**token_dict)
                             combinations.add(tuple(sorted(token_dict.items())))
 
-    # Három színű tokenek generálása
+    # Generate possible tokens with triple color missions
     for color1 in ['red', 'green', 'blue', 'yellow']:
         for color2 in ['red', 'green', 'blue', 'yellow']:
             for color3 in ['red', 'green', 'blue', 'yellow']:
@@ -61,7 +59,7 @@ def generate_token_combinations():
                                     token = Token(**token_dict)
                                     combinations.add(tuple(sorted(token_dict.items())))
 
-    # Négy színű tokenek generálása
+    # Generate possible tokens with quadruple color missions
     for color1 in ['red', 'green', 'blue', 'yellow']:
         for color2 in ['red', 'green', 'blue', 'yellow']:
             for color3 in ['red', 'green', 'blue', 'yellow']:
@@ -76,7 +74,7 @@ def generate_token_combinations():
                                             token = Token(**token_dict)
                                             combinations.add(tuple(sorted(token_dict.items())))
 
-    # Az adatok listává alakíttása majd sorrendbe helyezése
+    # Turn the data into a list then sort it
     sorted_combinations = [Token(**dict(comb)) for comb in sorted(list(combinations), key=lambda x: (len([color for color in dict(x).values() if color is not None]), sum(color for color in dict(x).values() if color is not None)))]
     
     return sorted_combinations
