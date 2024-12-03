@@ -10,7 +10,7 @@ import time
 logger = logging.getLogger(__name__)
 
 class Game:
-    def __init__(self, num_players, goal=10, gui=None, simulation_mode=False, game_number=1):
+    def __init__(self, num_players, goal=10, gui=None, simulation_mode=False, is_single_simulation=False, game_number=1):
         # Initialize Game
         colors = ['white', 'orange', 'pink', 'teal']
         self.players = [Player(colors[i], f'Player{i+1}', is_ai=(i != 0)) for i in range(num_players)]
@@ -31,6 +31,7 @@ class Game:
         self.gui = gui  # GUI reference
         self.simulation_mode = simulation_mode
         self.in_simulation = False
+        self.is_single_simulation = is_single_simulation
         self.turn_number = 1  # Initialize the turn number
         self.game_number = game_number  # Game number for tracking simulations
         self.game_over = False
@@ -152,6 +153,7 @@ class Game:
 
     def deal(self):
         # Filling the card board with cards from the deck
+        random.shuffle(self.deck)
         for i in range(len(self.card_board)):
             if self.card_board[i] is None and self.deck:
                 self.card_board[i] = self.deck.pop()
@@ -182,6 +184,7 @@ class Game:
 
         return positions
 
+
     def find_furthest_back_player(self):
         # Finds the last player (in turns)
         furthest_back_position = min(self.player_positions.values())
@@ -207,6 +210,8 @@ class Game:
     def ai_play_turn(self):
         current_player = self.players[self.current_player_index]
         current_player.total_movement_at_turn_start = current_player.total_movement  # Update movement at turn start
+        current_player.score_at_turn_start = current_player.score
+        current_player.token_progress_since_turn_start = 0  # Initialize token progress
 
         if self.gui:
             # Existing GUI handling code
@@ -222,13 +227,21 @@ class Game:
 
             start_time = time.time()
             possible_moves = get_possible_moves(self, current_player)
-            move = get_ai_move(self, current_player, depth=3, possible_moves=possible_moves)
+            move = get_ai_move(self, current_player, depth=4, possible_moves=possible_moves)
             end_time = time.time()
             turn_time = end_time - start_time
 
             # Record statistics
             self.statistics['turn_times'][current_player.name].append(turn_time)
             self.statistics['moves_per_player'][current_player.name].append(len(possible_moves))
+
+            # Calculate token progress since turn start
+            token_progress = 0
+            if move:
+                card_position, (x, y) = move
+                card = self.card_board[card_position]
+                token_progress += self.evaluate_placement(current_player, card, x, y)
+            current_player.token_progress_since_turn_start = token_progress
 
             # Record per-turn data
             turn_data = {
@@ -285,6 +298,12 @@ class Game:
 
     def evaluate_placement(self, player, card, x, y):
         # Score the placement of cards (legacy AI)
+
+        # Skip evaluation if card is not a valid card object
+        if not hasattr(card, 'tokens'):
+            logger.warning(f"Invalid card detected: {card}")
+            return 0  # Return 0 score for invalid cards
+    
         score = 0
         adjacent_positions = [(x-1, y), (x+1, y), (x, y-1), (x, y+1)]
         counts = {'red': 0, 'green': 0, 'blue': 0, 'yellow': 0}

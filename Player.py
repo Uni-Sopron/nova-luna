@@ -9,6 +9,8 @@ class Player:
         self.score = score
         self.total_movement = 0
         self.total_movement_at_turn_start = 0
+        self.score_at_turn_start = 0
+        self.token_progress_since_turn_start = 0
         self.is_ai = is_ai
         self.ai_personality = ai_personality  # Determines the variant of AI used
 

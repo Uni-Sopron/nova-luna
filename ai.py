@@ -12,6 +12,7 @@ def maxn_worker(args):
     apply_move(cloned_game, cloned_current_player, move)
     next_player = get_next_player(cloned_game, cloned_current_player)
     child_values = maxn(cloned_game, depth - 1, next_player)
+
     return move, child_values[current_player.name]
 
 def create_process_logger():
@@ -35,18 +36,33 @@ def initialize_process_logger():
     global process_logger
     process_logger = create_process_logger()
 
-def get_ai_move(game, ai_player, depth=3, possible_moves=None):
+def get_ai_move(game, ai_player, depth=4, possible_moves=None):
     if possible_moves is None:
         possible_moves = get_possible_moves(game, ai_player)
 
     # Handle Random AI Personality
     if ai_player.ai_personality == "Random":
         if possible_moves:
-            return random.choice(possible_moves)
+            selected_move = random.choice(possible_moves)
+            return selected_move
+        process_logger.info(f"Random AI has no valid moves.")
         return None  # No possible moves
+    
+    # Run the immediate winning move pre-check only if the player is close to winning
+    if ai_player.score == game.goal - 1:
+        for move in possible_moves:
+            cloned_game = copy.deepcopy(game)
+            cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)
 
-    # Use multiprocessing for AI computation only if not in simulation mode
-    if not game.simulation_mode:
+            apply_move(cloned_game, cloned_ai_player, move)
+
+            # Check if this move results in a win
+            if cloned_ai_player.score >= cloned_game.goal:
+                print(f"Immediate winning move found: {move}")
+                return move  # Immediately select the winning move
+
+    # Use multiprocessing for AI computation only if not in simulation mode or if single simulation
+    if not game.simulation_mode or game.is_single_simulation:
         with multiprocessing.Pool(
             processes=multiprocessing.cpu_count(),
             initializer=initialize_process_logger
@@ -55,13 +71,16 @@ def get_ai_move(game, ai_player, depth=3, possible_moves=None):
                 evaluate_move_multiprocess,
                 [(game, ai_player, move, depth) for move in possible_moves]
             )
-        # Select the best move based on results
+        
+        # select the move with the highest score
         best_move = None
         best_value = float('-inf')
         for move, value in results:
+            print(f"Move {move} evaluated with value {value}")
             if value > best_value:
                 best_value = value
                 best_move = move
+        print(f"AI selected move {best_move} with value {best_value}")
         return best_move
 
     # Sequential fallback for simulation mode
@@ -70,12 +89,22 @@ def get_ai_move(game, ai_player, depth=3, possible_moves=None):
     for move in possible_moves:
         cloned_game = copy.deepcopy(game)
         cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)
+        
+        # Set the score_at_turn_start before applying the move
+        cloned_ai_player.score_at_turn_start = cloned_ai_player.score
+        
         apply_move(cloned_game, cloned_ai_player, move)
+        
         values = maxn(cloned_game, depth - 1, cloned_ai_player)
-        ai_value = values[cloned_ai_player.name]
+        ai_value = values[ai_player.name]
+        print(f"Move {move} evaluated with value {ai_value}")
+        
+        # Keep track of the best move
         if ai_value > best_value:
             best_value = ai_value
             best_move = move
+
+    print(f"AI selected move {best_move} with value {best_value}")
     return best_move
 
 def evaluate_move_multiprocess(args):
@@ -112,6 +141,7 @@ def maxn(game, depth, current_player):
         cloned_game.in_simulation = True  # Ensure cloned game is marked as simulation
         cloned_current_player = next(p for p in cloned_game.players if p.name == current_player.name)
         apply_move(cloned_game, cloned_current_player, move)
+        
         next_player = get_next_player(cloned_game, cloned_current_player)
         child_values = maxn(cloned_game, depth - 1, next_player)
         if child_values[current_player.name] > values[current_player.name]:
@@ -134,87 +164,85 @@ def get_possible_moves(game, player):
     return possible_moves
 
 def apply_move(game, player, move):
-    card_position, (x, y) = move
-    card = game.card_board[card_position]
-    player.inventory.add_card(card, x, y)
-    game.card_board[card_position] = None
-    game.move_player(player, card)
+    # Temporarily set the logger level to WARNING to suppress other logs
+    original_level = logging.getLogger().getEffectiveLevel()
+    logging.getLogger().setLevel(logging.WARNING)
 
-    # Remove moon marker from current position
-    for i in range(len(game.card_board)):
-        if game.card_board[i] == game.moon_marker:
-            game.card_board[i] = None
-            break
+    try:
+        card_position, (x, y) = move
+        card = game.card_board[card_position]
+        player.inventory.add_card(card, x, y)  # This call generates logs
+        game.card_board[card_position] = None
+        game.move_player(player, card)
 
-    # Move moon marker to new position
-    game.moon_marker_position = card_position
-    game.card_board[card_position] = game.moon_marker
+        # Remove moon marker from current position
+        for i in range(len(game.card_board)):
+            if game.card_board[i] == game.moon_marker:
+                game.card_board[i] = None
+                break
 
-    if game.get_number_of_cards_on_board() < 3:
-        game.deal()
-    game.check_inventory(player)
-    game.check_end_game()
+        # Move moon marker to new position
+        game.moon_marker_position = card_position
+        game.card_board[card_position] = game.moon_marker
+
+        if game.get_number_of_cards_on_board() < 3:
+            game.deal()
+        game.check_inventory(player)
+        game.check_end_game()
+    finally:
+        # Restore the original logger level after suppression
+        logging.getLogger().setLevel(original_level)
+
 
 def evaluate_game_state(game, ai_player):
     values = {}
     goal_score = game.goal
 
     for player in game.players:
-        score = player.score * 100  # Heavily weight the player's score
+        score = player.score * 5.0 # Heavily weight the player's score
 
-        tokens_completed = 0
-        tokens_progress = 0
+        # Use player's score at turn start to track completed tokens
+        tokens_completed = player.score - player.score_at_turn_start
 
-        # Collect tokens from the player's inventory
-        for card, x, y in player.inventory.get_all_cards():
-            tokens = card.tokens
-            for token in tokens:
-                if not token.is_completed:
-                    # Calculate progress towards incomplete tokens
-                    progress = get_token_progress(game, player, token)
-                    tokens_progress += progress
-                else:
-                    # Token has been completed
-                    tokens_completed += 1
+        # Token progress since turn start
+        tokens_progress = player.token_progress_since_turn_start
 
         # Calculate movement since the start of the turn
         movement_since_turn_start = player.total_movement - player.total_movement_at_turn_start
 
         # Adjust the scoring based on AI personality
         if player.name == ai_player.name:
+
             personality = ai_player.ai_personality
             if personality == "Power":
                 movement_penalty = 0  # Ignore movement cost
                 # Token completion counts at least 4 times advancing tokens
-                score += tokens_progress * 10
-                score += tokens_completed * 50  # 5 times more than tokens_progress
+                score += tokens_progress * 1
+                score += tokens_completed * 5  # 5 times more than tokens_progress
             elif personality == "Combo":
                 # Bonus for taking multiple consecutive turns
                 consecutive_turns = get_consecutive_turns(game, player)
-                score += consecutive_turns * 60
+                score += consecutive_turns * 6
                 movement_penalty = movement_since_turn_start * 0.4 # Heavy movement cost penalty
-                score += tokens_progress * 10
-                score += tokens_completed * 50  # 5 times more than tokens_progress
+                score += tokens_progress * 1
+                score += tokens_completed * 5  # 5 times more than tokens_progress
             elif personality == "Greedy":
                 # Ignore token advancement
-                score += tokens_completed * 50  # Only considers token completion
+                score += tokens_completed * 5  # Only considers token completion
                 movement_penalty = movement_since_turn_start * 0.1
             else:  # Balanced / Default
                 movement_penalty = movement_since_turn_start * 0.1
-                score += tokens_progress * 10
-                score += tokens_completed * 50  # 5 times more than tokens_progress
+                score += tokens_progress * 1
+                score += tokens_completed * 5  # 5 times more than tokens_progress
         else:
             # Use default personality for opponents
             movement_penalty = movement_since_turn_start * 0 # Movement not considered for opponents
             # Opponents' progress and completion can be considered negatively
-            score -= tokens_progress * 10
-            score -= tokens_completed * 50
+            score -= tokens_progress * 0.33
+            score -= tokens_completed * 1.66
 
-        if player.score >= game.goal:
-            if player.name == ai_player.name:
-                score += 100000  # Significant extra points for reaching goal score
-            else:
-                score -= 100000  # Significant penalty if opponent reaches goal
+            if player.score >= goal_score:
+                score -= 1000 # Significant penalty if opponent reaches goal
 
         # Subtract movement penalty from the score
         score -= movement_penalty

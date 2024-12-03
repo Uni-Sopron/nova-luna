@@ -5,8 +5,7 @@ import threading
 import queue
 import logging
 import csv
-import multiprocessing
-from functools import partial
+from multiprocessing import Pool, cpu_count
 import gc
 
 # Configure logging
@@ -687,21 +686,20 @@ class NovaLunaGUI:
                 self.show_end_game_window()
 
     def get_available_card_positions(self):
-        # Finds all valid card's positions
-        current_position = self.game.moon_marker_position
+        # Returns the drawable cards on the board
         positions = []
-        count = 0
-        total_cards = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
-        if total_cards < 3:
-            for i in range(len(self.game.card_board)):
-                if self.game.card_board[i] is not None and self.game.card_board[i] != self.game.moon_marker:
-                    positions.append(i)
-            return positions
-        while count < 3:
-            current_position = (current_position + 1) % len(self.game.card_board)
-            if self.game.card_board[current_position] is not None and self.game.card_board[current_position] != self.game.moon_marker:
+        current_position = self.moon_marker_position
+        cards_found = 0
+        start_position = self.moon_marker_position
+
+        while cards_found < 3:
+            current_position = (current_position + 1) % len(self.card_board)
+            if self.card_board[current_position] is not None and self.card_board[current_position] != self.moon_marker:
                 positions.append(current_position)
-                count += 1
+                cards_found += 1
+            if current_position == start_position:
+                break
+
         return positions
 
     def refill_card_board_if_needed(self):
@@ -775,7 +773,7 @@ class NovaLunaGUI:
 
         def ai_task():
             # Perform the AI computation in a separate thread
-            move = get_ai_move(self.game, current_player, depth=3)  # Adjust depth as needed, 3 for default
+            move = get_ai_move(self.game, current_player, depth=4)  # Adjust depth as needed, 3 for default
             # Put the result into the queue
             self.ai_queue.put((current_player, move))
 
@@ -961,32 +959,38 @@ class NovaLunaGUI:
             self.fastmode_check.config(state=tk.NORMAL)
 
     def run_simulations(self, num_simulations, goal):
-        """
-        Run multiple game simulations in parallel, collecting results.
-        """
+        max_concurrent_simulations = min(cpu_count(), 10)  # Cap at 10 or the number of CPU cores
+        num_players = self.num_players_var.get()
+        ai_personalities = [var.get() for var in self.ai_personality_vars]
+        is_single_simulation = num_simulations == 1
+
+        logger.info(f"Running simulation{'...' if is_single_simulation else f's with up to {max_concurrent_simulations} processes...'}")
+
         per_player_data = []
         per_turn_data = []
 
-        # Prepare simulation parameters
-        num_players = self.num_players_var.get()
-        ai_personalities = [self.ai_personality_vars[i].get() for i in range(num_players)]
+        if is_single_simulation:
+            stats = run_single_simulation(1, num_players, goal, ai_personalities, is_single_simulation)
+            player_data, turn_data = stats
+            per_player_data.extend(player_data)
+            per_turn_data.extend(turn_data)
+        else:
+            with Pool(processes=max_concurrent_simulations) as pool:
+                # Prepare arguments for the worker function
+                simulation_args = [
+                    (i, num_players, goal, ai_personalities, is_single_simulation)
+                    for i in range(1, num_simulations + 1)
+                ]
+                # Run simulations in parallel
+                for i, (player_data, turn_data) in enumerate(pool.starmap(run_single_simulation, simulation_args), 1):
+                    print(f"Simulation {i}/{num_simulations} complete")
+                    per_player_data.extend(player_data)
+                    per_turn_data.extend(turn_data)
 
-        # Prepare multiprocessing pool
-        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-            # Use partial to bind fixed parameters to the simulation function
-            simulation_func = partial(run_single_simulation, num_players=num_players, goal=goal, ai_personalities=ai_personalities)
-
-            # Run simulations in parallel
-            for i, (player_data, turn_data) in enumerate(pool.imap_unordered(simulation_func, range(1, num_simulations + 1)), 1):
-                per_player_data.extend(player_data)
-                per_turn_data.extend(turn_data)
-                print(f"Completed simulation {i}/{num_simulations}")
-
-        # Save data to CSV files
+        # Save results to CSV
         self.save_per_player_data_to_csv(per_player_data)
         self.save_per_turn_data_to_csv(per_turn_data)
 
-        # Display a message when simulations are complete
         print("Simulations complete. Data saved to simulations.csv and thinking_times.csv.")
 
     def save_per_player_data_to_csv(self, data):
@@ -1052,13 +1056,13 @@ class NovaLunaGUI:
 
 
 
-def run_single_simulation(simulation_id, num_players, goal, ai_personalities):
+def run_single_simulation(simulation_id, num_players, goal, ai_personalities, is_single_simulation):
     """
     Run a single simulation and return its data.
     """
     try:
         # Initialize game
-        game = Game(num_players=num_players, goal=goal, gui=None, simulation_mode=True, game_number=simulation_id)
+        game = Game(num_players=num_players, goal=goal, gui=None, simulation_mode=True, is_single_simulation=is_single_simulation, game_number=simulation_id)
         for j, player in enumerate(game.players):
             player.is_ai = True
             player.ai_personality = ai_personalities[j]
