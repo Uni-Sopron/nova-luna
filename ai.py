@@ -36,7 +36,7 @@ def initialize_process_logger():
     global process_logger
     process_logger = create_process_logger()
 
-def get_ai_move(game, ai_player, depth=4, possible_moves=None):
+def get_ai_move(game, ai_player, depth=3, possible_moves=None):
     if possible_moves is None:
         possible_moves = get_possible_moves(game, ai_player)
 
@@ -49,7 +49,7 @@ def get_ai_move(game, ai_player, depth=4, possible_moves=None):
         return None  # No possible moves
     
     # Run the immediate winning move pre-check only if the player is close to winning
-    if ai_player.score == game.goal - 1:
+    if ai_player.score == game.goal - 2:
         for move in possible_moves:
             cloned_game = copy.deepcopy(game)
             cloned_ai_player = next(p for p in cloned_game.players if p.name == ai_player.name)

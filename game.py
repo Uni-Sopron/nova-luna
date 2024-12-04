@@ -227,7 +227,7 @@ class Game:
 
             start_time = time.time()
             possible_moves = get_possible_moves(self, current_player)
-            move = get_ai_move(self, current_player, depth=4, possible_moves=possible_moves)
+            move = get_ai_move(self, current_player, depth=3, possible_moves=possible_moves)
             end_time = time.time()
             turn_time = end_time - start_time
 

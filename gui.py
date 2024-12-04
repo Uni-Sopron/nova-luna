@@ -774,7 +774,7 @@ class NovaLunaGUI:
 
         def ai_task():
             # Perform the AI computation in a separate thread
-            move = get_ai_move(self.game, current_player, depth=4)  # Adjust depth as needed, 3 for default
+            move = get_ai_move(self.game, current_player, depth=3)  # Adjust depth as needed, 3 for default
             # Put the result into the queue
             self.ai_queue.put((current_player, move))
 
