@@ -1,8 +1,4 @@
 # Ignore Python cache directories
 __pycache__/
 node_modules/
-simulations.csv
-thinking_times.csv
 launch.json
-Statistics_data/VS Random, score 10, 10 games/Győzelmi ráta.png
-Statistics_data/1 Player AI - score 10 - 1 game/Thinking times graph.png

@@ -1,0 +1,6 @@
+game_number,turn_number,player_name,ai_personality,turn_time
+1,1,Player1,Balanced,85
+1,2,Player1,Balanced,311
+1,3,Player1,Balanced,1048
+1,4,Player1,Balanced,1656
+1,5,Player1,Balanced,0.01

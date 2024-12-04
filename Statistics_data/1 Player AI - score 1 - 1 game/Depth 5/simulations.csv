@@ -1,0 +1,2 @@
+game_number,winner_name,winner_ai_type,game_length,player_name,player_ai_type,average_score_per_turn,average_move_cost
+1,Player1,Balanced,7,Player1,Balanced,0.20,6.00
