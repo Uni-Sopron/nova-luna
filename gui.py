@@ -687,19 +687,20 @@ class NovaLunaGUI:
 
     def get_available_card_positions(self):
         # Returns the drawable cards on the board
+        current_position = self.game.moon_marker_position
         positions = []
-        current_position = self.moon_marker_position
-        cards_found = 0
-        start_position = self.moon_marker_position
-
-        while cards_found < 3:
-            current_position = (current_position + 1) % len(self.card_board)
-            if self.card_board[current_position] is not None and self.card_board[current_position] != self.moon_marker:
+        count = 0
+        total_cards = sum(1 for card in self.game.card_board if card is not None and card != self.game.moon_marker)
+        if total_cards < 3:
+            for i in range(len(self.game.card_board)):
+                if self.game.card_board[i] is not None and self.game.card_board[i] != self.game.moon_marker:
+                    positions.append(i)
+            return positions
+        while count < 3:
+            current_position = (current_position + 1) % len(self.game.card_board)
+            if self.game.card_board[current_position] is not None and self.game.card_board[current_position] != self.game.moon_marker:
                 positions.append(current_position)
-                cards_found += 1
-            if current_position == start_position:
-                break
-
+                count += 1
         return positions
 
     def refill_card_board_if_needed(self):
